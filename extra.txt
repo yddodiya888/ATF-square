@@ -1,0 +1,164 @@
+ {cartOpen && (
+        <div className="cart-popup-overlay" onClick={() => setCartOpen(false)}>
+          <div className="cart-popup" onClick={(e) => e.stopPropagation()}>
+            {/* HEADER */}
+
+            <div className="cart-popup-header">
+              <h3>Cart</h3>
+
+              <button
+                type="button"
+                className="cart-popup-close"
+                onClick={() => setCartOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* CART ITEMS */}
+
+            <div className="cart-items">
+              {cart.map((item) => {
+                const productImage = item.product.product_image
+                  ? new URL(item.product.product_image).searchParams.get(
+                      "src",
+                    ) || item.product.product_image
+                  : "";
+
+                const itemTotal = Number(item.price || 0) * item.quantity;
+
+                return (
+                  <div key={item.cartItemId} className="cart-item">
+                    {/* IMAGE */}
+
+                    {productImage && (
+                      <img
+                        src={productImage}
+                        alt={item.product.product_name}
+                        className="cart-item-image"
+                      />
+                    )}
+
+                    {/* DETAILS */}
+
+                    <div className="cart-item-details">
+                      <h4>{item.product.product_name}</h4>
+
+                      {/* PREFERENCE */}
+
+                      {item.preference && (
+                        <div className="cart-detail">
+                          Preference: {item.preference}
+                        </div>
+                      )}
+
+                      {/* VARIATION */}
+
+                      {item.variation && (
+                        <div className="cart-detail">
+                          {item.variation.variation_name}
+                        </div>
+                      )}
+
+                      {/* EXTRAS */}
+
+                      {item.addons?.length > 0 && (
+                        <div className="cart-detail">
+                          Extras:
+                          <div className="cart-addons">
+                            {item.addons.map((addon) => (
+                              <span key={addon.addon_id}>
+                                {addon.multiple_addon_name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* PRICE + QUANTITY */}
+
+                      <div className="cart-item-bottom">
+                        <span className="cart-item-price">₹{itemTotal}</span>
+
+                        <div className="cart-quantity">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (item.quantity <= 1) {
+                                return;
+                              }
+
+                              updateCartQuantity(
+                                item.cartItemId,
+                                item.quantity - 1,
+                              );
+                            }}
+                          >
+                            −
+                          </button>
+
+                          <span>{item.quantity}</span>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateCartQuantity(
+                                item.cartItemId,
+                                item.quantity + 1,
+                              )
+                            }
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      {/* CLEAR PRODUCT */}
+
+                      <button
+                        type="button"
+                        className="cart-clear"
+                        onClick={() => removeFromCart(item.cartItemId)}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* CART TOTAL */}
+
+            <div className="cart-total">
+              <span>Total</span>
+
+              <strong>
+                ₹
+                {cart.reduce(
+                  (total, item) =>
+                    total + Number(item.price || 0) * item.quantity,
+                  0,
+                )}
+              </strong>
+            </div>
+
+            <div className="cart-actions">
+              <button
+                type="button"
+                className="clear-all-button"
+                onClick={clearAllCart}
+              >
+                Clear All
+              </button>
+
+              <button
+                type="button"
+                className="place-order-button"
+                onClick={handlePlaceOrder}
+              >
+                Place Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
