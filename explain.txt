@@ -1,0 +1,3470 @@
+
+ATF SQUARE – COMPLETE CART + PLACE ORDER + FRONTEND CONCEPT STUDY GUIDE
+======================================================================
+
+Purpose
+-------
+This TXT file is a study guide for the current ATF Square food-menu project.
+
+IMPORTANT SOURCE SCOPE
+----------------------
+The explanations in this file are grounded primarily in the current Home.place-order.jsx
+source that was available for this task, plus the API response sample available in
+"Pasted text(3).txt".
+
+The current Home.place-order.jsx contains:
+- Next.js client component setup
+- API loading with api.GetMenuItems()
+- Morning Menu / All Day Menu rendering
+- Category expansion
+- ProductCard logic
+- Product configuration (preference, variation, extras)
+- Availability checking
+- Cart state
+- Cart item identity
+- Add/update/remove/clear cart operations
+- localStorage cart persistence
+- Cart popup
+- Place Order popup
+- Pick-Up / Delivery form
+- Form state and controlled inputs
+- Validation
+- WhatsApp order-message generation
+- URL encoding
+- window.open() to launch WhatsApp
+- Menu shortcut scrolling
+
+The exact implementation of "@/helper/api.interceptor" was NOT included in the source
+file available here, so this guide explains its role from the code's usage
+(api.GetMenuItems()) rather than inventing unseen implementation details.
+
+The guide is intentionally written as a learning document. It explains:
+1. WHAT the code does
+2. WHY it is written this way
+3. WHICH JavaScript/React/Next.js concept is being used
+4. COMMON INTERVIEW / PRACTICAL QUESTIONS
+5. WHAT TO REMEMBER
+
+======================================================================
+TABLE OF CONTENTS
+======================================================================
+
+01. Project mental model
+02. File/component architecture
+03. API data shape
+04. "use client" and imports
+05. Home component and state
+06. API fetching
+07. localStorage and hydration
+08. Main menu toggle
+09. Category toggle
+10. Cart data model
+11. createCartItemId()
+12. addToCart()
+13. find(), map(), filter(), reduce()
+14. Spread operator and immutability
+15. ProductCard configuration state
+16. Availability logic
+17. Dynamic product pricing
+18. Add-ons / extras
+19. Quantity logic
+20. Cart button and cart popup
+21. Cart total
+22. Place Order state machine
+23. Pickup vs Delivery radio buttons
+24. Controlled form inputs
+25. handleOrderChange()
+26. Form validation
+27. trim(), replace(), regex
+28. Building cart text for WhatsApp
+29. Building delivery address text
+30. Template literals
+31. filter() for message cleanup
+32. encodeURIComponent()
+33. window.open()
+34. Complete ADD-to-CART execution flow
+35. Complete PLACE-ORDER execution flow
+36. Parent/child communication and props
+37. Lifting state up
+38. Conditional rendering
+39. Optional chaining and fallbacks
+40. Derived values
+41. Array-method cheat sheet
+42. React concept cheat sheet
+43. JavaScript concept cheat sheet
+44. Browser API cheat sheet
+45. Interview / viva questions and answers
+46. Debugging questions
+47. Common mistakes
+48. How to rebuild the feature from scratch
+49. Practice exercises
+50. Final mental model
+51. Appendix: important code snippets
+52. Appendix: source-code walkthrough map
+
+======================================================================
+01. PROJECT MENTAL MODEL
+======================================================================
+
+Think of the app as a data-flow system.
+
+API
+ |
+ v
+menu state
+ |
+ v
+Morning Menu / All Day Menu
+ |
+ v
+Category
+ |
+ v
+ProductCard
+ |
+ +------------------------------+
+ | user configuration           |
+ | - preference                 |
+ | - variation                  |
+ | - extras                     |
+ +------------------------------+
+ |
+ v
+ADD
+ |
+ v
+Cart state
+ |
+ +-------------------------------+
+ | localStorage persistence      |
+ +-------------------------------+
+ |
+ v
+Cart popup
+ |
+ v
+Place Order
+ |
+ +-------------------------------+
+ | Pick-Up / Delivery            |
+ | customer form                 |
+ +-------------------------------+
+ |
+ v
+Validation
+ |
+ v
+WhatsApp message
+ |
+ v
+encodeURIComponent()
+ |
+ v
+WhatsApp URL
+ |
+ v
+window.open()
+
+This is the most important architecture to understand.
+
+The application is not "just JSX".
+It is a chain:
+
+USER ACTION
+    ->
+EVENT HANDLER
+    ->
+STATE UPDATE
+    ->
+RENDER
+    ->
+DERIVED DATA
+    ->
+NEXT USER ACTION
+
+That pattern appears repeatedly in this project.
+
+======================================================================
+02. FILE / COMPONENT ARCHITECTURE
+======================================================================
+
+The current code is intentionally kept in one Home.jsx file, with nested/component
+functions in the same file.
+
+The structure is approximately:
+
+Home
+ |
+ +-- Morning Menu
+ |     |
+ |     +-- Category
+ |           |
+ |           +-- ProductCard
+ |
+ +-- All Day Menu
+ |     |
+ |     +-- Category
+ |           |
+ |           +-- ProductCard
+ |
+ +-- Menu Shortcut Popup
+ |
+ +-- Cart Button
+ |
+ +-- Cart Popup
+ |
+ +-- Place Order Popup
+
+Important ownership rule:
+
+Home owns the cart.
+
+Why?
+
+Because many ProductCards need to affect the same cart, and the Cart popup also needs
+to read the same cart.
+
+The shape is:
+
+                      Home
+                       |
+                    cart state
+                       |
+          +------------+-------------+
+          |            |             |
+     ProductCard   ProductCard   Cart Popup
+
+This is the React idea called LIFTING STATE UP.
+
+If two components need the same data, keep the shared state in their common parent.
+
+======================================================================
+03. API DATA SHAPE
+======================================================================
+
+The API sample contains a structure like:
+
+{
+  "success": 1,
+  "message": "Menu fetched",
+  "data": {
+    "all_day_menu": [
+      {
+        "category_id": "2",
+        "category_name": "Nachos",
+        "category_image": "...",
+        "products": [
+          {
+            "product_id": "1",
+            "product_name": "Nachos Suprémos",
+            "price": 200,
+            "jain_available": 1,
+            "swaminarayan_available": 0,
+            "coming_soon": 0,
+            "minimum_quantity": 1,
+            "product_variations": [
+              {
+                "variation_id": "1",
+                "variation_name": "Nachos Suprémos with Guacamole",
+                "price": 300
+              }
+            ],
+            "multiple_addons": []
+          }
+        ]
+      }
+    ]
+  }
+}
+
+The important learning point is that this is nested data:
+
+data
+ |
+ +-- all_day_menu[]
+ |      |
+ |      +-- category
+ |             |
+ |             +-- products[]
+ |
+ +-- morning_menu[]
+        |
+        +-- category
+               |
+               +-- products[]
+
+That explains why the JSX uses:
+
+menu?.morning_menu?.map(...)
+menu?.all_day_menu?.map(...)
+category.products?.map(...)
+
+This is a common real-world API pattern.
+
+======================================================================
+04. "use client" AND IMPORTS
+======================================================================
+
+The file starts with:
+
+"use client";
+
+This tells Next.js that this component must be treated as a Client Component.
+
+Why is that required here?
+
+Because the component uses browser/interactivity features such as:
+- useState
+- useEffect
+- localStorage
+- window.open()
+- document.getElementById()
+- scrollIntoView()
+
+A server-only component cannot behave like an interactive browser component in the
+same way.
+
+Imports:
+
+import { useEffect, useState } from "react";
+import api from "@/helper/api.interceptor";
+import "./Home.css";
+
+Concepts:
+- named import: { useEffect, useState }
+- default import: api
+- side-effect/style import: "./Home.css"
+- path alias: "@/..."
+
+IMPORTANT Q:
+What is the difference between import { useState } from "react" and
+import api from "@/helper/api.interceptor"?
+
+ANSWER:
+The first is a named export imported by name. The second imports the module's default
+export.
+
+======================================================================
+05. HOME COMPONENT AND STATE
+======================================================================
+
+The main component is:
+
+export default function Home() {
+  ...
+}
+
+Concept:
+A React function component is a JavaScript function that returns JSX.
+
+The main states are:
+
+const [menu, setMenu] = useState(null);
+const [openMenu, setOpenMenu] = useState(null);
+const [shortcutOpen, setShortcutOpen] = useState(false);
+const [openCategory, setOpenCategory] = useState(null);
+const [cartOpen, setCartOpen] = useState(false);
+
+Then the cart:
+
+const [cart, setCart] = useState([]);
+
+Then hydration protection:
+
+const [cartHydrated, setCartHydrated] = useState(false);
+
+Place Order state:
+
+const [orderOpen, setOrderOpen] = useState(false);
+const [orderType, setOrderType] = useState("pickup");
+const [orderError, setOrderError] = useState("");
+
+Form state:
+
+const [orderForm, setOrderForm] = useState({
+  name: "",
+  mobile: "",
+  notes: "",
+  houseFlat: "",
+  buildingName: "",
+  tower: "",
+  floor: "",
+  society: "",
+  landmark: "",
+  pincode: "",
+});
+
+Each state answers one UI question.
+
+Examples:
+
+openMenu
+"What top-level menu is open?"
+
+openCategory
+"Which category is open?"
+
+cartOpen
+"Is cart popup visible?"
+
+orderOpen
+"Is place-order popup visible?"
+
+orderType
+"Is the customer ordering pickup or delivery?"
+
+orderError
+"What validation error should be shown?"
+
+orderForm
+"What has the customer typed?"
+
+IMPORTANT:
+Do not think of useState as "making a variable".
+It creates React state that is connected to rendering.
+
+Normal variable:
+let count = 0;
+
+React state:
+const [count, setCount] = useState(0);
+
+When state changes, React schedules a re-render.
+
+======================================================================
+06. API FETCHING
+======================================================================
+
+The menu-loading effect is:
+
+useEffect(() => {
+  async function getMenu() {
+    try {
+      const data = await api.GetMenuItems();
+
+      console.log("MENU RESPONSE:", data);
+
+      if (data.success === 1) {
+        setMenu(data.data);
+      }
+    } catch (error) {
+      console.error("MENU ERROR:", error);
+    }
+  }
+
+  getMenu();
+}, []);
+
+Concepts:
+- useEffect
+- async/await
+- Promise
+- try/catch
+- conditional logic
+- state update
+- dependency array
+
+What does the empty [] mean?
+
+It means the effect is intended to run after the initial mount rather than after every
+render.
+
+Conceptual sequence:
+
+component mounts
+    ->
+useEffect runs
+    ->
+getMenu()
+    ->
+api.GetMenuItems()
+    ->
+Promise resolves
+    ->
+data returned
+    ->
+setMenu(data.data)
+    ->
+React re-renders
+
+Why do we not put the API call directly in the render body?
+
+Because rendering should not repeatedly trigger side effects such as network calls.
+
+INTERVIEW Q:
+Why use useEffect for an API call in this client component?
+
+ANSWER:
+Because fetching data is a side effect. useEffect lets the component run that side
+effect as part of the component lifecycle rather than during render.
+
+======================================================================
+07. LOCALSTORAGE AND HYDRATION
+======================================================================
+
+The cart is persisted in localStorage using:
+
+const CART_STORAGE_KEY = "atf_cart";
+
+Initial React state:
+
+const [cart, setCart] = useState([]);
+
+Then:
+
+useEffect(() => {
+  try {
+    const savedCart = localStorage.getItem(CART_STORAGE_KEY);
+
+    if (savedCart) {
+      const parsedCart = JSON.parse(savedCart);
+
+      if (Array.isArray(parsedCart)) {
+        setCart(parsedCart);
+      }
+    }
+  } catch (error) {
+    console.error("CART LOAD ERROR:", error);
+  } finally {
+    setCartHydrated(true);
+  }
+}, []);
+
+Saving:
+
+useEffect(() => {
+  if (!cartHydrated) return;
+
+  try {
+    localStorage.setItem(
+      CART_STORAGE_KEY,
+      JSON.stringify(cart)
+    );
+  } catch (error) {
+    console.error("CART SAVE ERROR:", error);
+  }
+}, [cart, cartHydrated]);
+
+Very important concepts:
+
+localStorage stores strings.
+
+So:
+JavaScript array/object
+    ->
+JSON.stringify()
+    ->
+string
+    ->
+localStorage
+
+And when reading:
+string
+    ->
+JSON.parse()
+    ->
+JavaScript array/object
+
+WHY CARTHYDRATED?
+
+Because Next.js can render on the server.
+
+The browser has localStorage.
+The server does not.
+
+If initial state reads localStorage during the first render, you can get:
+
+SERVER:
+cart = []
+
+CLIENT:
+cart = saved cart
+
+Then server HTML and client HTML can differ.
+
+That is a hydration mismatch.
+
+The safer pattern is:
+
+initial render
+cart = []
+
+then after mount:
+load localStorage
+setCart(saved cart)
+
+Only after loading do we allow saving.
+
+That is what this guard does:
+
+if (!cartHydrated) return;
+
+It prevents the initial empty array from immediately overwriting the existing saved cart.>
+INTERVIEW Q:
+
+Why is localStorage accessed inside useEffect?
+
+ANSWER:
+Because localStorage is a browser API and the component may be rendered in an environment
+where browser globals are unavailable during server rendering.
+
+======================================================================
+08. MAIN MENU TOGGLE
+======================================================================
+
+Function:
+
+const toggleMenu = (menuName) => {
+  if (openMenu === menuName) {
+    setOpenMenu(null);
+    setOpenCategory(null);
+  } else {
+    setOpenMenu(menuName);
+    setOpenCategory(null);
+  }
+};
+
+This is UI state logic.
+
+Meaning:
+
+If user clicks the currently open menu:
+    close it
+    close any open category
+
+Otherwise:
+    open the requested menu
+    reset category selection
+
+Example:
+
+openMenu = null
+
+click Morning:
+openMenu = "morning"
+
+click Morning again:
+openMenu = null
+
+click All Day:
+openMenu = "allDay"
+
+Concepts:
+- if/else
+- state transitions
+- resetting dependent state
+
+Why reset openCategory when switching menus?
+
+Because category visibility depends on the currently selected top-level menu.
+Keeping an old category ID while switching the parent menu can create confusing state.
+
+======================================================================
+09. CATEGORY TOGGLE
+======================================================================
+
+const toggleCategory = (categoryId) => {
+  if (openCategory === categoryId) {
+    setOpenCategory(null);
+  } else {
+    setOpenCategory(categoryId);
+  }
+};
+
+This implements accordion-like behavior.
+
+If the same category is already open:
+    close it
+
+Otherwise:
+    open that category
+
+The condition is based on identity:
+
+openCategory === categoryId
+
+This also demonstrates that state can store an ID instead of an entire object.
+
+That is often a clean design:
+store the smallest piece of state needed to represent the UI.
+
+======================================================================
+10. CART DATA MODEL
+======================================================================
+
+A cart item has approximately:
+
+{
+  cartItemId,
+  product,
+  preference,
+  variation,
+  addons,
+  price,
+  quantity
+}
+
+Think of it as a data model.
+
+cartItemId:
+Unique identity for the specific configuration.
+
+product:
+The original API product data.
+
+preference:
+Regular / Jain / Swaminarayan.
+
+variation:
+Selected variation object.
+
+addons:
+Selected extra/add-on objects.
+
+price:
+Final unit price after variation and extras.
+
+quantity:
+Number of units.
+
+This is important:
+PRICE IS THE UNIT PRICE FOR THE SELECTED CONFIGURATION.
+
+Then:
+line total = unit price * quantity
+
+Example:
+
+price = 250
+quantity = 2
+
+line total = 500
+
+======================================================================
+11. createCartItemId()
+======================================================================
+
+The function:
+
+const createCartItemId = ({
+  product,
+  preference,
+  variation,
+  addons
+}) => {
+  const addonIds = addons
+    .map((addon) => addon.addon_id)
+    .sort()
+    .join("-");
+
+  return [
+    product.product_id,
+    preference || "",
+    variation?.variation_id || "",
+    addonIds,
+  ].join("|");
+};
+
+This is one of the most important functions in the project.
+
+WHY?
+
+Because the same base product can exist in many configurations.
+
+Example:
+
+Nachos + Regular
+Nachos + Jain
+Nachos + Regular + Cheese
+Nachos + Regular + Cheese + Salsa
+
+These must not accidentally merge.
+
+The ID therefore combines multiple identity components:
+
+product ID
++
+preference
++
+variation ID
++
+addon IDs
+
+Example:
+
+10|Jain|2|5-8
+
+That can be read as:
+
+product = 10
+preference = Jain
+variation = 2
+extras = 5,8
+
+CONCEPTS USED:
+- destructuring
+- map()
+- sort()
+- join()
+- optional chaining
+- logical OR fallback
+- array
+- string construction
+
+WHY sort()?
+
+Suppose selected extras are:
+
+[5, 8]
+
+Another time they are selected in reverse order:
+
+[8, 5]
+
+Without sorting, IDs would become:
+
+5-8
+and
+8-5
+
+Those are actually the same set of extras but would look different.
+
+sort() normalizes the order.
+
+IMPORTANT:
+This is an example of canonicalization: different input order can be converted to one
+consistent representation.
+
+======================================================================
+12. addToCart()
+======================================================================
+
+The function:
+
+const addToCart = ({
+  product,
+  preference,
+  variation,
+  addons,
+  price
+}) => {
+
+  const cartItemId = createCartItemId({
+    product,
+    preference,
+    variation,
+    addons,
+  });
+
+  const minimumQuantity =
+    Number(product.minimum_quantity) || 1;
+
+  setCart((currentCart) => {
+    const existingItem = currentCart.find(
+      (item) => item.cartItemId === cartItemId,
+    );
+
+    if (existingItem) {
+      return currentCart.map((item) =>
+        item.cartItemId === cartItemId
+          ? {
+              ...item,
+              quantity:
+                item.quantity + minimumQuantity,
+            }
+          : item,
+      );
+    }
+
+    return [
+      ...currentCart,
+      {
+        cartItemId,
+        product,
+        preference,
+        variation,
+        addons,
+        price,
+        quantity: minimumQuantity,
+      },
+    ];
+  });
+};
+
+There are TWO paths.
+
+PATH A:
+Exact configuration already exists.
+
+Then increase its quantity.
+
+PATH B:
+Exact configuration does not exist.
+
+Then append a new cart item.
+
+This is classic "search then update/insert" logic.
+
+----------------------------------------------------------------------
+12A. Why Number()?
+----------------------------------------------------------------------
+
+API values can sometimes arrive as strings.
+
+Number("2") -> 2
+
+So:
+
+Number(product.minimum_quantity)
+
+converts the value to a number.
+
+Then:
+
+|| 1
+
+provides a fallback.
+
+If the converted value is invalid/falsy for the intended use, use 1.
+
+----------------------------------------------------------------------
+12B. Why functional setState?
+----------------------------------------------------------------------
+
+setCart((currentCart) => { ... })
+
+This is preferred when the next state depends on the previous state.
+
+Pattern:
+
+setState(previous => next)
+
+This makes the relationship explicit.
+
+----------------------------------------------------------------------
+12C. Why find() first?
+----------------------------------------------------------------------
+
+find() answers:
+
+"Does the exact cart item already exist?"
+
+Example:
+
+const item = array.find(
+  (x) => x.id === targetId
+);
+
+If found:
+returns object.
+
+If not:
+returns undefined.
+
+----------------------------------------------------------------------
+12D. Why map() after find()?
+----------------------------------------------------------------------
+
+When an item exists, we need a new cart array where ONLY the matching item has a new
+quantity.
+
+That is what map() does.
+
+----------------------------------------------------------------------
+12E. Why spread operator?
+----------------------------------------------------------------------
+
+{
+  ...item,
+  quantity: item.quantity + minimumQuantity
+}
+
+This copies existing item properties and replaces quantity.
+
+If item is:
+
+{
+  name: "Nachos",
+  price: 200,
+  quantity: 1
+}
+
+then:
+
+{
+  ...item,
+  quantity: 2
+}
+
+becomes:
+
+{
+  name: "Nachos",
+  price: 200,
+  quantity: 2
+}
+
+This is immutable-style updating.
+
+----------------------------------------------------------------------
+12F. Why not currentCart.push(...)?
+----------------------------------------------------------------------
+
+Because push mutates the original array.
+
+In React state, it is much safer and clearer to create a new array:
+
+[
+  ...currentCart,
+  newItem
+]
+
+This preserves immutability.
+
+======================================================================
+13. find(), map(), filter(), reduce()
+======================================================================
+
+These four methods are central to the project.
+
+find()
+------
+Search for one item.
+
+Example:
+const item = cart.find(
+  (item) => item.cartItemId === id
+);
+
+Returns:
+one object or undefined.
+
+map()
+-----
+Transform every item.
+
+Example:
+cart.map(item => ...)
+
+Returns:
+new array of same logical length.
+
+filter()
+--------
+Keep items that satisfy a condition.
+
+Example:
+cart.filter(
+  item => item.cartItemId !== id
+);
+
+Returns:
+new array, often with fewer items.
+
+reduce()
+--------
+Combine many items into one result.
+
+Example:
+cart.reduce(
+  (total, item) => total + item.quantity,
+  0
+);
+
+Returns:
+one final value.
+
+MEMORY TRICK:
+
+find = find ONE
+map = make/transform MANY
+filter = keep/remove MANY
+reduce = reduce MANY to ONE
+
+======================================================================
+14. SPREAD OPERATOR AND IMMUTABILITY
+======================================================================
+
+Array spread:
+
+[
+  ...currentCart,
+  newItem
+]
+
+Object spread:
+
+{
+  ...item,
+  quantity: newQuantity
+}
+
+The spread operator copies values into a new structure.
+
+Why do this?
+
+Because React state should be updated through new references instead of mutating the
+existing state object/array in place.
+
+BAD style:
+
+cart.push(newItem);
+
+BETTER:
+
+setCart([
+  ...cart,
+  newItem
+]);
+
+BAD style:
+
+item.quantity = item.quantity + 1;
+
+BETTER:
+
+{
+  ...item,
+  quantity: item.quantity + 1
+}
+
+This concept becomes extremely important with React.
+
+======================================================================
+15. PRODUCTCARD CONFIGURATION STATE
+======================================================================
+
+ProductCard has its own local state:
+
+const [selectedPreference, setSelectedPreference]
+  = useState("Regular");
+
+const [availabilityOpen, setAvailabilityOpen]
+  = useState(false);
+
+const [selectedVariation, setSelectedVariation]
+  = useState(null);
+
+const [selectedAddons, setSelectedAddons]
+  = useState([]);
+
+This illustrates an important design idea:
+
+Home-level state:
+Shared across the page.
+
+ProductCard local state:
+Specific to that product card's current configuration/UI.
+
+For example:
+selectedAddons belongs naturally to the individual ProductCard.
+
+This is a good example of choosing the right state owner.
+
+======================================================================
+16. AVAILABILITY LOGIC
+======================================================================
+
+The product has an availability object with weekday keys.
+
+The function:
+
+const checkAvailability = () => {
+  const availability = product.availability;
+
+  if (!availability) {
+    return false;
+  }
+
+  const days = [
+    "sunday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+  ];
+
+  const today = days[new Date().getDay()];
+
+  return availability[today] === 1;
+};
+
+Step by step:
+
+1. Get availability object.
+2. If missing, return false.
+3. Get current day number using new Date().getDay().
+4. Convert day number to the API's weekday key.
+5. Read availability[today].
+6. Only value 1 means available.
+
+Example:
+getDay() returns 1
+days[1] = "monday"
+
+Then:
+availability["monday"] === 1
+
+This is dynamic property access.
+
+IMPORTANT:
+getDay() returns a number from 0 to 6 with Sunday at 0.
+
+The array order is therefore deliberate.
+
+======================================================================
+17. DYNAMIC PRODUCT PRICING
+======================================================================
+
+Base price:
+
+Number(product.price || 0)
+
+Variation price:
+
+const variationPrice = selectedVariation
+  ? Number(selectedVariation.price || 0)
+  : 0;
+
+Add-on price:
+
+const addonsPrice = selectedAddons.reduce(
+  (total, addon) =>
+    total + Number(addon.multiple_addon_price || 0),
+  0,
+);
+
+Final price:
+
+const finalPrice =
+  Number(product.price || 0)
+  + variationPrice
+  + addonsPrice;
+
+Concept:
+Derived state/value.
+
+We do not need:
+
+const [finalPrice, setFinalPrice] = useState(...)
+
+because finalPrice can always be calculated from existing values.
+
+This is a very important React principle:
+DO NOT STORE DERIVABLE DATA AS EXTRA STATE WHEN YOU CAN CALCULATE IT.
+
+Example:
+
+Base = 200
+Variation = 100
+Extras = 50 + 30
+
+Final = 380
+
+If quantity is 2:
+Line total = 760
+
+======================================================================
+18. ADD-ONS / EXTRAS
+======================================================================
+
+The API's multiple_addons are rendered as checkboxes.
+
+The code checks whether an addon is selected:
+
+const checked = selectedAddons.some(
+  (item) => item.addon_id === addon.addon_id
+);
+
+some() returns true/false.
+
+Then toggleAddon():
+
+const toggleAddon = (addon) => {
+  setSelectedAddons((current) => {
+    const exists = current.some(
+      (item) => item.addon_id === addon.addon_id
+    );
+
+    if (exists) {
+      return current.filter(
+        (item) => item.addon_id !== addon.addon_id
+      );
+    }
+
+    return [...current, addon];
+  });
+};
+
+This is a toggle pattern.
+
+If exists:
+remove.
+
+If not exists:
+add.
+
+Conceptually:
+
+checkbox click
+  ->
+is selected?
+  -> YES -> filter it out
+  -> NO  -> spread + append it
+
+IMPORTANT:
+Checkboxes allow MULTIPLE extras.
+
+That is why selectedAddons is an array.
+
+======================================================================
+19. QUANTITY LOGIC
+======================================================================
+
+increaseQuantity():
+
+const increaseQuantity = () => {
+  if (!cartItem) return;
+
+  updateCartQuantity(
+    cartItem.cartItemId,
+    cartItem.quantity + 1
+  );
+};
+
+decreaseQuantity():
+
+const decreaseQuantity = () => {
+  if (!cartItem) return;
+
+  if (cartItem.quantity <= 1) {
+    return;
+  }
+
+  updateCartQuantity(
+    cartItem.cartItemId,
+    cartItem.quantity - 1
+  );
+};
+
+This includes guard clauses.
+
+Guard clause:
+
+if (!cartItem) return;
+
+Meaning:
+If there is nothing to update, stop immediately.
+
+The second guard:
+
+if (cartItem.quantity <= 1) return;
+
+enforces the business rule:
+Quantity cannot go below 1.
+
+Notice:
+"Minus at 1" does NOT remove the item.
+
+Deletion is a separate action:
+Clear.
+
+This is a UI/business-rule decision.
+
+======================================================================
+20. CART BUTTON AND CART POPUP
+======================================================================
+
+Cart button:
+
+{cart.length > 0 && (
+  <button className="cart-button">
+    CART ({cartCount})
+  </button>
+)}
+
+This is conditional rendering using &&.
+
+Meaning:
+If cart length is greater than zero, render the button.
+
+Otherwise:
+render nothing.
+
+Cart popup:
+
+{cartOpen && (
+  <div className="cart-popup-overlay">
+    ...
+  </div>
+)}
+
+Again:
+if cartOpen is true, render popup.
+
+React is using state as a rendering switch.
+
+This is a major concept:
+UI = function of state.
+
+======================================================================
+21. CART ITEM TOTAL
+======================================================================
+
+Inside the cart:
+
+const itemTotal =
+  Number(item.price || 0) * item.quantity;
+
+Then:
+
+₹{itemTotal}
+
+If:
+price = 250
+quantity = 3
+
+result:
+750
+
+This is not necessarily an API field.
+It is a value derived by the frontend from the selected cart state.
+
+======================================================================
+22. PLACE ORDER AS A UI STATE MACHINE
+======================================================================
+
+Important states:
+
+cartOpen
+orderOpen
+orderType
+orderError
+
+Think of the UI as a small state machine.
+
+STATE A:
+cartOpen = true
+orderOpen = false
+
+Visible:
+Cart popup.
+
+After Place Order:
+cartOpen = false;
+orderOpen = true
+
+Visible:
+Place Order popup.
+
+After Cancel:
+orderOpen = false
+cartOpen = true
+
+Visible:
+Cart popup again.
+
+This is much easier to understand than thinking in terms of random show/hide code.
+
+The function:
+
+const handlePlaceOrder = () => {
+  setOrderError("");
+  setCartOpen(false);
+  setOrderOpen(true);
+};
+
+Its responsibility:
+Switch from cart screen to order form.
+
+It does not build the WhatsApp message.
+
+That responsibility is in:
+handleWhatsappOrder()
+
+This is good separation of responsibilities.
+
+======================================================================
+23. PICK-UP VS DELIVERY RADIO BUTTONS
+======================================================================
+
+Initial:
+
+const [orderType, setOrderType] = useState("pickup");
+
+Pick-up:
+
+checked={orderType === "pickup"}
+
+Delivery:
+
+checked={orderType === "delivery"}
+
+Changing it:
+
+const handleOrderTypeChange = (type) => {
+  setOrderType(type);
+  setOrderError("");
+};
+
+The radio controls are "controlled inputs".
+
+React state determines which radio is checked.
+
+The important relationship:
+
+orderType === "pickup"
+        ->
+pickup checked
+
+orderType === "delivery"
+        ->
+delivery checked
+
+Conditional delivery fields:
+
+{orderType === "delivery" && (
+  <div className="delivery-fields">
+    ...
+  </div>
+)}
+
+This is conditional rendering.
+
+======================================================================
+24. CONTROLLED FORM INPUTS
+======================================================================
+
+55
+An input looks conceptually like:
+
+<input
+  name="name"
+  value={orderForm.name}
+  onChange={handleOrderChange}
+/>
+
+The input's displayed value comes from React state.
+
+The user's typing triggers onChange.
+
+So:
+
+typing
+
+ ->
+event
+ ->
+handler
+ ->
+setOrderForm
+ ->
+state changes
+ ->
+render
+ ->
+input displays new value
+
+This creates one source of truth.
+
+That is what "controlled input" means.
+
+In uncontrolled inputs, the DOM maintains the value more independently.
+
+Here:
+React maintains it.
+
+======================================================================
+25. handleOrderChange()
+======================================================================
+
+The function:
+
+const handleOrderChange = (event) => {
+  const { name, value } = event.target;
+
+  setOrderForm((current) => ({
+    ...current,
+    [name]: value,
+  }));
+
+  if (orderError) {
+    setOrderError("");
+  }
+};
+
+This is a very reusable form pattern.
+
+FIRST:
+const { name, value } = event.target;
+
+This destructures:
+event.target.name
+event.target.value
+
+SECOND:
+setOrderForm(...)
+
+THIRD:
+...current
+
+preserves all old fields.
+
+FOURTH:
+[name]: value
+
+updates the specific field dynamically.
+
+Example:
+
+name = "mobile"
+value = "9999999999"
+
+then:
+
+[name]: value
+
+becomes:
+
+mobile: "9999999999"
+
+This lets ONE handler manage many inputs.
+
+This is one of the most useful React form techniques to memorize.
+
+======================================================================
+26. FORM VALIDATION
+======================================================================
+
+The pickup fields are represented as:
+
+const requiredPickupFields = [
+  ["name", "Please enter your name."],
+  ["mobile", "Please enter your mobile number."],
+];
+
+Delivery fields include:
+
+const requiredDeliveryFields = [
+  ["name", "..."],
+  ["mobile", "..."],
+  ["houseFlat", "..."],
+  ["buildingName", "..."],
+  ["tower", "..."],
+  ["floor", "..."],
+  ["society", "..."],
+  ["landmark", "..."],
+  ["pincode", "..."],
+];
+
+Then:
+
+const requiredFields =
+  orderType === "pickup"
+    ? requiredPickupFields
+    : requiredDeliveryFields;
+
+This is an example of DRY thinking:
+Don't write two completely separate validation functions when the structure can be
+shared.
+
+Then:
+
+const missingField = requiredFields.find(
+  ([field]) => !orderForm[field].trim()
+);
+
+This combines:
+- find()
+- destructuring
+- dynamic object property access
+- trim()
+- negation
+
+If a field is blank:
+find returns that field's validation entry.
+
+Then:
+
+if (missingField) {
+  setOrderError(missingField[1]);
+  return;
+}
+
+The function exits.
+
+That is a guard/early-return pattern.
+
+======================================================================
+27. trim(), replace(), AND REGEX
+======================================================================
+
+TRIM
+----
+
+"   Yuvraj   ".trim()
+
+becomes:
+
+"Yuvraj"
+
+Used to prevent input containing only spaces from passing validation.
+
+REPLACE WITH REGEX
+------------------
+
+const cleanMobile =
+  orderForm.mobile.replace(/\D/g, "");
+
+Here:
+\D means "not a digit".
+
+g means global, so all matching characters are replaced.
+
+Example:
+"98765-43210"
+may become:
+"9876543210"
+
+This is useful when you want to validate digit count even if the user typed separators.
+
+MOBILE CHECK
+------------
+
+if (cleanMobile.length < 10) {
+  ...
+}
+
+This is a minimum-length check.
+
+PINCODE REGEX
+-------------
+
+if (
+  orderType === "delivery" &&
+  !/^\d{6}$/.test(orderForm.pincode.trim())
+)
+
+Pattern:
+^      start
+\d     a digit
+{6}    exactly six times
+$      end
+
+So it expects exactly six digits.
+
+======================================================================
+28. BUILDING CART TEXT FOR WHATSAPP
+======================================================================
+
+The code uses:
+
+const itemsText = cart
+  .map((item, index) => {
+    ...
+    return `${index + 1}. ...`;
+  })
+  .join("\n");
+
+WHY?
+
+WhatsApp expects text, but cart is an array of JavaScript objects.
+
+So we convert:
+
+OBJECTS
+  ->
+STRINGS
+  ->
+ONE STRING
+
+Example internal data:
+
+[
+  { product: Nachos, quantity: 2 },
+  { product: Burger, quantity: 1 }
+]
+
+becomes something like:
+
+1. Nachos x 2 - ₹500
+2. Burger x 1 - ₹250
+
+This is a common data transformation.
+
+======================================================================
+29. BUILDING DELIVERY ADDRESS TEXT
+======================================================================
+
+The code builds address text only for delivery:
+
+const addressText =
+  orderType === "delivery"
+    ? [
+        `House / Flat No.: ${orderForm.houseFlat}`,
+        `Building Name: ${orderForm.buildingName}`,
+        `Tower: ${orderForm.tower}`,
+        `Floor: ${orderForm.floor}`,
+        `Society: ${orderForm.society}`,
+        `Landmark: ${orderForm.landmark}`,
+        `Pincode: ${orderForm.pincode}`,
+      ].join("\n")
+    : "";
+
+Again:
+ternary for condition.
+
+If delivery:
+build formatted address.
+
+If pickup:
+empty string.
+
+This keeps pickup messages free of irrelevant address information.
+
+======================================================================
+30. TEMPLATE LITERALS
+======================================================================
+
+The code frequently uses:
+
+`Name: ${orderForm.name}`
+
+This is a template literal.
+
+It lets us combine static text and variables.
+
+Example:
+
+const name = "Yuvraj";
+
+`Hello ${name}`
+
+becomes:
+
+"Hello Yuvraj"
+
+This is much cleaner than string concatenation in many cases.
+
+Template literals are also useful for multi-part messages and dynamic IDs.
+
+======================================================================
+31. filter() FOR MESSAGE CLEANUP
+======================================================================
+
+The final message array contains some optional lines.
+
+Example:
+orderForm.notes may be empty.
+
+The code uses:
+
+.filter(
+  (line) => line !== null && line !== ""
+)
+
+This removes empty lines from the array before join().
+
+Why do this?
+
+Because building messages conditionally can produce empty placeholders.
+
+So:
+
+[
+  "Hello",
+  "",
+  "Name: Yuvraj",
+  null,
+  "Total: ₹500"
+]
+
+becomes:
+
+[
+  "Hello",
+  "Name: Yuvraj",
+  "Total: ₹500"
+]
+
+Then join("\n") makes a clean message.
+
+This demonstrates that the SAME JavaScript array methods can be used in very different
+parts of the application.
+
+======================================================================
+32. encodeURIComponent()
+======================================================================
+
+The message is placed inside a URL:
+
+const whatsappUrl =
+  `https://wa.me/${WHATSAPP_NUMBER}?text=${
+    encodeURIComponent(message)
+  }`;
+
+Why encode?
+
+Because URLs have special syntax.
+
+A message can contain:
+- spaces
+- ampersands
+- question marks
+- new lines
+- currency symbols
+- punctuation
+
+encodeURIComponent converts the message to URL-safe text.
+
+Without encoding, some characters could be interpreted as part of URL syntax instead of
+message content.
+
+This is a browser/web-platform concept rather than a React-specific one.
+
+======================================================================
+33. window.open()
+======================================================================
+
+The final browser action is:
+
+window.open(
+  whatsappUrl,
+  "_blank",
+  "noopener,noreferrer"
+);
+
+This tells the browser to open the generated URL in a new tab/window.
+
+Concepts:
+- window object
+- browser API
+- target "_blank"
+- security-related opener isolation options
+
+IMPORTANT:
+This code does NOT call a backend order API.
+
+The current order flow is:
+
+frontend validation
+ ->
+message generation
+ ->
+WhatsApp URL
+ ->
+browser opens WhatsApp
+
+So "Order on WhatsApp" currently means:
+prepare an order message and open WhatsApp.
+
+It is not the same thing as:
+POST order to a restaurant backend.
+
+======================================================================
+34. COMPLETE ADD-TO-CART EXECUTION FLOW
+======================================================================
+
+Imagine the user sees:
+
+Nachos
+₹200
+[ADD]
+
+They click ADD.
+
+STEP 1
+------
+ProductCard runs:
+
+handleAddProduct()
+
+STEP 2
+------
+Availability is checked:
+
+checkAvailability()
+
+STEP 3
+------
+If unavailable:
+setAvailabilityOpen(true)
+return
+
+If available:
+addProduct()
+
+STEP 4
+------
+addProduct() calls:
+
+addToCart({
+  product,
+  preference,
+  variation,
+  addons,
+  price: finalPrice
+})
+
+STEP 5
+------
+addToCart() creates a unique configuration ID.
+
+STEP 6
+------
+It checks:
+
+currentCart.find(...)
+
+STEP 7
+------
+If same configuration exists:
+map() updates quantity.
+
+STEP 8
+------
+If not:
+a new object is appended using array spread.
+
+STEP 9
+------
+setCart() updates state.
+
+STEP 10
+-------
+React re-renders.
+
+STEP 11
+-------
+ProductCard creates the same configuration ID.
+
+STEP 12
+-------
+cart.find(...) now finds the item.
+
+STEP 13
+-------
+quantity becomes > 0.
+
+STEP 14
+-------
+The UI changes:
+
+ADD
+
+to:
+
+−  1  +
+
+STEP 15
+-------
+cart.length > 0 becomes true.
+
+STEP 16
+-------
+Cart button appears.
+
+STEP 17
+-------
+cartCount recalculates.
+
+This is React state flow in real life.
+
+======================================================================
+35. COMPLETE PLACE-ORDER EXECUTION FLOW
+======================================================================
+
+STEP 1
+------
+User opens cart.
+
+cartOpen = true
+
+STEP 2
+------
+Clicks Place Order.
+
+handlePlaceOrder()
+
+STEP 3
+------
+Cart popup closes.
+
+setCartOpen(false)
+
+STEP 4
+------
+Order popup opens.
+
+setOrderOpen(true)
+
+STEP 5
+------
+User chooses pickup or delivery.
+
+setOrderType(...)
+
+STEP 6
+------
+User types into fields.
+
+onChange
+ ->
+handleOrderChange
+ ->
+setOrderForm
+
+STEP 7
+------
+User clicks Order on WhatsApp.
+
+handleWhatsappOrder()
+
+STEP 8
+------
+Required fields are selected based on orderType.
+
+STEP 9
+------
+Missing fields are checked with find().
+
+STEP 10
+-------
+Mobile is normalized and validated.
+
+STEP 11
+-------
+If delivery, pincode is validated.
+
+STEP 12
+-------
+Cart items are converted to formatted text.
+
+STEP 13
+-------
+Delivery address is formatted when needed.
+
+STEP 14
+-------
+Total is calculated with reduce().
+
+STEP 15
+-------
+The entire message is assembled.
+
+STEP 16
+-------
+Empty optional lines are filtered out.
+
+STEP 17
+-------
+Message is joined with new lines.
+
+STEP 18
+-------
+encodeURIComponent() makes it safe for the URL.
+
+STEP 19
+-------
+WhatsApp URL is created.
+
+STEP 20
+-------
+window.open() launches it.
+
+That is the full order pipeline.
+
+======================================================================
+36. PARENT / CHILD COMMUNICATION AND PROPS
+======================================================================
+
+Home renders Category with:
+
+<Category
+  cart={cart}
+  addToCart={addToCart}
+  updateCartQuantity={updateCartQuantity}
+  removeFromCart={removeFromCart}
+/>
+
+Then Category passes these into ProductCard.
+
+This means data and functions are flowing downward through props.
+
+A function passed as a prop is often called a callback prop.
+
+Example:
+
+Parent:
+<Category addToCart={addToCart} />
+
+Child:
+<ProductCard addToCart={addToCart} />
+
+Grandchild:
+addToCart(...)
+
+The child does not own the cart.
+It asks the parent-owned cart state to change.
+
+This is a major React architecture pattern.
+
+======================================================================
+37. LIFTING STATE UP
+======================================================================
+
+Why is cart in Home rather than inside ProductCard?
+
+Because multiple ProductCards need to share one cart.
+
+If every ProductCard had its own:
+
+const [cart, setCart] = useState([])
+
+then:
+Product 1 would have cart A.
+Product 2 would have cart B.
+Cart popup would have another cart.
+
+That would be wrong.
+
+Instead:
+
+Home owns one cart.
+
+ProductCards receive:
+cart
+addToCart
+updateCartQuantity
+removeFromCart
+
+This is state lifting.
+
+Rule to remember:
+
+IF MULTIPLE COMPONENTS NEED THE SAME STATE,
+KEEP THAT STATE IN THEIR CLOSEST COMMON PARENT.
+
+======================================================================
+38. CONDITIONAL RENDERING
+======================================================================
+
+There are three common patterns in the project.
+
+1. &&
+
+{cart.length > 0 && (
+  <CartButton />
+)}
+
+Meaning:
+render only when condition is truthy.
+
+2. TERNARY
+
+orderType === "pickup"
+  ? pickupFields
+  : deliveryFields
+
+Meaning:
+choose one of two outputs.
+
+3. EARLY RETURN IN JS
+
+if (!cartItem) return;
+
+This is not JSX conditional rendering, but it controls code execution.
+
+Conditional rendering is one of the most important React skills to master.
+
+======================================================================
+39. OPTIONAL CHAINING AND FALLBACKS
+======================================================================
+
+Examples:
+
+selectedVariation?.variation_id
+
+Meaning:
+If selectedVariation exists, access variation_id.
+Otherwise return undefined instead of throwing.
+
+Other example:
+
+product.product_variations || []
+
+Meaning:
+if product.product_variations is missing/falsy, use an empty array.
+
+This is useful for API data that may omit optional fields.
+
+Other example:
+
+product.price || 0
+
+Meaning:
+use product.price when it is truthy; otherwise use 0.
+
+IMPORTANT:
+Optional chaining and fallback operators solve different problems.
+
+?. protects property access.
+
+|| provides an alternative value.
+
+======================================================================
+40. DERIVED VALUES
+======================================================================
+
+Examples:
+
+variationPrice
+addonsPrice
+finalPrice
+quantity
+cartCount
+itemTotal
+total
+
+These can be calculated from existing state/data.
+
+Example:
+
+const cartCount = cart.reduce(
+  (total, item) => total + item.quantity,
+  0
+);
+
+We do not need separate state for cartCount.
+
+Same for total.
+
+This avoids duplicated state.
+
+Duplicated state creates synchronization bugs.
+
+Rule:
+If value can be calculated directly from existing state/props, prefer deriving it.
+
+======================================================================
+41. JAVASCRIPT ARRAY-METHOD CHEAT SHEET
+======================================================================
+
+find()
+Return one matching item.
+
+map()
+Transform every item into a new array.
+
+filter()
+Keep items that pass the condition.
+
+reduce()
+Collapse an array into one result.
+
+some()
+Check whether at least one item matches.
+
+sort()
+Reorder array items. Used here to normalize addon ID order.
+
+join()
+Turn array items into one string.
+
+Example chain in this project:
+
+addons
+  .map(...)
+  .sort(...)
+  .join("-")
+
+This means:
+objects
+ -> IDs
+ -> sorted IDs
+ -> one ID string
+
+Another:
+
+cart
+  .map(...)
+  .join("\n")
+
+means:
+cart objects
+ -> text lines
+ -> one message
+
+Another:
+
+cart
+  .reduce(...)
+means:
+cart items
+ -> one number
+
+======================================================================
+42. REACT CONCEPT CHEAT SHEET
+======================================================================
+
+useState
+-------
+Stores state connected to rendering.
+
+useEffect
+---------
+Runs side effects after rendering according to dependencies.
+
+Props
+-----
+Data/functions passed from parent to child.
+
+Lifting state
+-------------
+Move shared state to a common parent.
+
+Controlled input
+----------------
+Input value is controlled by React state.
+
+Conditional rendering
+---------------------
+Render different JSX based on state/conditions.
+
+Functional state update
+-----------------------
+setState(previous => next)
+
+Useful when new state depends on old state.
+
+Immutable update
+----------------
+Create new arrays/objects instead of mutating existing state.
+
+======================================================================
+43. JAVASCRIPT CONCEPT CHEAT SHEET
+======================================================================
+
+Destructuring:
+const { name, value } = event.target;
+
+Spread:
+{ ...item }
+[ ...cart, newItem ]
+
+Template literal:
+`Hello ${name}`
+
+Optional chaining:
+item?.variation?.variation_id
+
+Ternary:
+condition ? a : b
+
+Dynamic object key:
+[name]: value
+
+Guard clause:
+if (!item) return;
+
+String methods:
+trim()
+replace()
+
+Regex:
+^\d{6}$
+
+======================================================================
+44. BROWSER API CHEAT SHEET
+======================================================================
+
+localStorage.getItem()
+Read string from storage.
+
+localStorage.setItem()
+Write string to storage.
+
+JSON.stringify()
+Object/array -> string.
+
+JSON.parse()
+String -> object/array.
+
+window.open()
+Open URL.
+
+document.getElementById()
+Find DOM element.
+
+scrollIntoView()
+Scroll a DOM element into view.
+
+setTimeout()
+Schedule code after a delay.
+
+These are browser/platform APIs, not React APIs.
+
+======================================================================
+45. INTERVIEW / VIVA QUESTIONS AND ANSWERS
+======================================================================
+
+Q1. Why is the cart state in Home?
+A:
+Because many ProductCards and the Cart popup need the same cart. Home is their common
+parent, so the state is lifted there.
+
+Q2. Why use setCart(currentCart => ...)?
+A:
+Because the new cart depends on the previous cart.
+
+Q3. Why use find() before map()?
+A:
+find() checks whether the exact cart configuration already exists. map() can then update
+the matching item immutably.
+
+Q4. Why use filter() to remove a cart item?
+A:
+filter() returns a new array without the matching item.
+
+Q5. Why not use push()?
+A:
+push() mutates the existing array. React state updates are clearer and safer when a new
+array is produced.
+
+Q6. Why is cartItemId more than product_id?
+A:
+The same base product can have different preferences, variations, and extras. Those
+configurations should be distinct cart items.
+
+Q7. Why sort addon IDs?
+A:
+To make the ID consistent even if the user selects the same extras in a different order.
+
+Q8. Why use reduce() for cart count?
+A:
+Because we need one total number from many cart items.
+
+Q9. Why is finalPrice not state?
+A:
+It is derivable from product price, variation price, and addon price.
+
+Q10. What is a controlled input?
+A:
+An input whose value is controlled by React state.
+
+Q11. Why one handleOrderChange for many inputs?
+A:
+Because event.target.name identifies the field and [name]: value dynamically updates the
+correct object property.
+
+Q12. What does [name]: value mean?
+A:
+It is a computed property name. The object key is determined by the value of name.
+
+Q13. Why use trim()?
+A:
+To reject input that contains only whitespace and to normalize validation.
+
+Q14. What does /\D/g do?
+A:
+It targets every non-digit character.
+
+Q15. What does /^\d{6}$/ validate?
+A:
+Exactly six digits from beginning to end.
+
+Q16. Why use encodeURIComponent()?
+A:
+To encode the message so it can safely be placed inside a URL query parameter.
+
+Q17. Does Order on WhatsApp call a backend API?
+A:
+No. In the current code it builds a WhatsApp URL and uses window.open().
+
+Q18. Why use useEffect for localStorage?
+A:
+Because localStorage is a browser API and should not be relied on during server rendering.
+
+Q19. What caused the earlier hydration issue?
+A:
+If the initial client render reads saved localStorage data while the server starts with an
+empty cart, the generated HTML can differ.
+
+Q20. Why does cartHydrated exist?
+A:
+To delay saving until the initial localStorage load has finished.
+
+Q21. What does JSON.stringify do?
+A:
+Converts a JavaScript object/array into a JSON string.
+
+Q22. What does JSON.parse do?
+A:
+Converts a JSON string back into a JavaScript value.
+
+Q23. What is a callback prop?
+A:
+A function passed to a child so the child can trigger logic owned by the parent.
+
+Q24. What is a guard clause?
+A:
+A condition that immediately exits a function when a required condition is not met.
+
+Q25. Why use optional chaining?
+A:
+To safely access a nested property when an object may be null/undefined.
+
+Q26. What is conditional rendering?
+A:
+Rendering different JSX depending on a condition/state value.
+
+Q27. What is derived data?
+A:
+A value that can be calculated from existing state/props rather than stored separately.
+
+Q28. Why are notes optional?
+A:
+The validation list intentionally excludes notes, while the message conditionally adds
+them only when non-empty.
+
+Q29. What happens if availability is missing?
+A:
+checkAvailability() returns false, so the item is treated as unavailable by this logic.
+
+Q30. What happens when quantity is 1 and the user presses minus?
+A:
+Nothing. The function returns, preserving the business rule that quantity cannot fall below 1.
+
+Q31. What removes an item?
+A:
+removeFromCart(), which uses filter().
+
+Q32. What empties the entire cart?
+A:
+clearAllCart(), which sets cart to [] and closes the cart popup.
+
+======================================================================
+46. DEBUGGING QUESTIONS
+======================================================================
+
+ERROR:
+Cannot read properties of undefined
+
+Likely lesson:
+Check optional API fields.
+Use:
+?. and || fallbacks where appropriate.
+
+ERROR:
+Hydration failed
+
+Likely lesson:
+Check whether initial render uses browser-only data such as localStorage.
+
+ERROR:
+cart.find is not a function
+
+Likely lesson:
+cart must be an array.
+Validate loaded storage with Array.isArray().
+
+ERROR:
+Product appears duplicated
+
+Likely lesson:
+Check cartItemId construction.
+Two configurations may be producing different IDs, or identical configurations may be
+producing different IDs.
+
+ERROR:
+Same product configuration is not merging
+
+Likely lesson:
+Compare generated cartItemId values.
+
+ERROR:
+Extras selected in reverse order create separate cart rows
+
+Likely lesson:
+Normalize addon order with sort() before join().
+
+ERROR:
+Form field not updating
+
+Check:
+- input name attribute
+- value={orderForm.name}
+- onChange={handleOrderChange}
+- [name]: value
+
+ERROR:
+WhatsApp message has broken characters
+
+Check:
+encodeURIComponent(message)
+
+ERROR:
+Delivery fields not visible
+
+Check:
+orderType
+and the condition:
+{orderType === "delivery" && (...)}
+
+======================================================================
+47. COMMON MISTAKES
+======================================================================
+
+Mistake 1:
+Mutating React state directly.
+
+Bad:
+cart.push(item)
+
+Better:
+setCart([...cart, item])
+
+Mistake 2:
+Using product_id only as cart identity.
+
+Problem:
+Different configurations merge.
+
+Better:
+Use composite identity.
+
+Mistake 3:
+Storing finalPrice in state unnecessarily.
+
+Problem:
+Extra synchronization.
+
+Better:
+Calculate it.
+
+Mistake 4:
+Reading localStorage during initial render in a Next.js page that must hydrate
+consistently.
+
+Problem:
+Hydration mismatch.
+
+Better:
+Load after mount.
+
+Mistake 5:
+Saving localStorage immediately before load finishes.
+
+Problem:
+Existing cart can be overwritten with [].
+
+Better:
+wait for cartHydrated.
+
+Mistake 6:
+Using one giant change handler without using input names.
+
+Problem:
+Harder to scale.
+
+Better:
+name/value + computed property key.
+
+Mistake 7:
+Treating the WhatsApp action as a real backend order API.
+
+Problem:
+Wrong mental model.
+
+Current implementation is URL-based handoff to WhatsApp.
+
+======================================================================
+48. HOW TO REBUILD THE FEATURE FROM SCRATCH
+======================================================================
+
+This is a good learning exercise.
+
+STEP 1:
+Create:
+
+const [cart, setCart] = useState([]);
+
+STEP 2:
+Define the cart item structure.
+
+STEP 3:
+Write createCartItemId().
+
+STEP 4:
+Write addToCart().
+
+STEP 5:
+Write updateCartQuantity().
+
+STEP 6:
+Write removeFromCart().
+
+STEP 7:
+Create cartCount with reduce().
+
+STEP 8:
+Create cart popup using cartOpen.
+
+STEP 9:
+Add orderOpen.
+
+STEP 10:
+Create orderType.
+
+STEP 11:
+Create orderForm object.
+
+STEP 12:
+Make controlled inputs.
+
+STEP 13:
+Write handleOrderChange().
+
+STEP 14:
+Write pickup/delivery validation.
+
+STEP 15:
+Convert cart to message text.
+
+STEP 16:
+Create total.
+
+STEP 17:
+Create address text for delivery.
+
+STEP 18:
+Build WhatsApp message.
+
+STEP 19:
+encodeURIComponent(message)
+
+STEP 20:
+window.open(...)
+
+Do this once without copying code.
+Then compare your version with the project.
+
+That is how you move from "I can understand code" to "I can create code."
+
+======================================================================
+49. PRACTICE EXERCISES
+======================================================================
+
+Exercise 1:
+Change quantity minimum rule from 1 to 2 for one fake product.
+
+Exercise 2:
+Add a cart subtotal before total.
+
+Exercise 3:
+Add "Estimated total items" using reduce().
+
+Exercise 4:
+Create a function:
+getCartItemById(id)
+
+Exercise 5:
+Create a function:
+calculateCartTotal(cart)
+
+Exercise 6:
+Create:
+formatCartForWhatsApp(cart)
+
+Exercise 7:
+Validate that a name contains at least 2 characters.
+
+Exercise 8:
+Validate that mobile contains exactly 10 digits.
+
+Exercise 9:
+Create a new order field:
+email
+
+Exercise 10:
+Add a delivery note:
+"Please keep the phone reachable."
+
+Exercise 11:
+Make "tower" optional while keeping other address fields required.
+
+Exercise 12:
+Add "Clear Cart" confirmation.
+
+Exercise 13:
+Make a cart badge showing total quantity.
+
+Exercise 14:
+Count distinct cart rows separately from total quantity.
+
+Exercise 15:
+Write createCartItemId() from memory.
+
+======================================================================
+50. FINAL MENTAL MODEL
+======================================================================
+
+The most important thing to remember is not the syntax.
+
+Remember the relationships.
+
+--------------------------------------------------
+PRODUCT CONFIGURATION
+--------------------------------------------------
+
+product
++
+preference
++
+variation
++
+addons
+    |
+    v
+cartItemId
+    |
+    v
+cart item
+    |
+    v
+quantity
+    |
+    v
+line total
+
+--------------------------------------------------
+CART
+--------------------------------------------------
+
+cart[]
+    |
+    +-- find()   -> identify existing configuration
+    |
+    +-- map()    -> update matching item
+    |
+    +-- filter() -> remove item
+    |
+    +-- reduce() -> calculate totals
+
+--------------------------------------------------
+FORM
+--------------------------------------------------
+
+input
+    |
+    v
+onChange
+    |
+    v
+handleOrderChange
+    |
+    v
+setOrderForm
+    |
+    v
+React state
+    |
+    v
+controlled input
+
+--------------------------------------------------
+ORDER
+--------------------------------------------------
+
+orderType
+    |
+    +-- pickup
+    |     -> name
+    |     -> mobile
+    |     -> notes
+    |
+    +-- delivery
+          -> name
+          -> mobile
+          -> notes
+          -> address fields
+
+Then:
+
+validation
+    |
+    v
+cart -> text
+    |
+    v
+total
+    |
+    v
+message
+    |
+    v
+encodeURIComponent()
+    |
+    v
+WhatsApp URL
+    |
+    v
+window.open()
+
+This is the full feature in one mental picture.
+
+======================================================================
+51. APPENDIX – IMPORTANT CODE SNIPPETS
+======================================================================
+
+A. Cart state
+------------
+
+const [cart, setCart] = useState([]);
+
+B. Hydration-safe persistence
+-----------------------------
+
+const [cartHydrated, setCartHydrated] = useState(false);
+
+useEffect(() => {
+  try {
+    const savedCart = localStorage.getItem("atf_cart");
+
+    if (savedCart) {
+      const parsedCart = JSON.parse(savedCart);
+
+      if (Array.isArray(parsedCart)) {
+        setCart(parsedCart);
+      }
+    }
+  } finally {
+    setCartHydrated(true);
+  }
+}, []);
+
+useEffect(() => {
+  if (!cartHydrated) return;
+
+  localStorage.setItem(
+    "atf_cart",
+    JSON.stringify(cart)
+  );
+}, [cart, cartHydrated]);
+
+C. Cart identity
+----------------
+
+const createCartItemId = ({
+  product,
+  preference,
+  variation,
+  addons
+}) => {
+  const addonIds = addons
+    .map((addon) => addon.addon_id)
+    .sort()
+    .join("-");
+
+  return [
+    product.product_id,
+    preference || "",
+    variation?.variation_id || "",
+    addonIds,
+  ].join("|");
+};
+
+D. Add to cart
+--------------
+
+setCart((currentCart) => {
+  const existingItem = currentCart.find(
+    (item) => item.cartItemId === cartItemId
+  );
+
+  if (existingItem) {
+    return currentCart.map((item) =>
+      item.cartItemId === cartItemId
+        ? {
+            ...item,
+            quantity:
+              item.quantity + minimumQuantity,
+          }
+        : item
+    );
+  }
+
+  return [
+    ...currentCart,
+    {
+      cartItemId,
+      product,
+      preference,
+      variation,
+      addons,
+      price,
+      quantity: minimumQuantity,
+    }
+  ];
+});
+
+E. Update quantity
+------------------
+
+setCart((currentCart) =>
+  currentCart.map((item) =>
+    item.cartItemId === cartItemId
+      ? { ...item, quantity }
+      : item
+  )
+);
+
+F. Remove
+---------
+
+setCart((currentCart) =>
+  currentCart.filter(
+    (item) => item.cartItemId !== cartItemId
+  )
+);
+
+G. Total
+--------
+
+const total = cart.reduce(
+  (sum, item) =>
+    sum + Number(item.price || 0) * item.quantity,
+  0
+);
+
+H. Controlled input
+-------------------
+
+<input
+  name="mobile"
+  value={orderForm.mobile}
+  onChange={handleOrderChange}
+/>
+
+I. Generic handler
+------------------
+
+const handleOrderChange = (event) => {
+  const { name, value } = event.target;
+
+  setOrderForm((current) => ({
+    ...current,
+    [name]: value,
+  }));
+};
+
+J. Pickup/delivery conditional render
+-------------------------------------
+
+{orderType === "delivery" && (
+  <div>
+    ...
+  </div>
+)}
+
+K. Mobile normalization
+-----------------------
+
+const cleanMobile =
+  orderForm.mobile.replace(/\D/g, "");
+
+L. Pincode validation
+--------------------
+
+/^\d{6}$/.test(orderForm.pincode.trim())
+
+M. Cart to text
+---------------
+
+const itemsText = cart
+  .map((item, index) => {
+    const itemTotal =
+      Number(item.price || 0) * item.quantity;
+
+    return `${index + 1}. ${
+      item.product.product_name
+    } x ${item.quantity} - ₹${itemTotal}`;
+  })
+  .join("\n");
+
+N. URL encoding
+---------------
+
+const whatsappUrl =
+  `https://wa.me/${WHATSAPP_NUMBER}?text=${
+    encodeURIComponent(message)
+  }`;
+
+O. Open WhatsApp
+----------------
+
+window.open(
+  whatsappUrl,
+  "_blank",
+  "noopener,noreferrer"
+);
+
+======================================================================
+52. APPENDIX – SOURCE-CODE WALKTHROUGH MAP
+======================================================================
+
+Use this section to navigate the source file.
+
+TOP OF FILE
+-----------
+"use client"
+imports
+CART_STORAGE_KEY
+WHATSAPP_NUMBER
+
+HOME STATE
+----------
+menu
+openMenu
+shortcutOpen
+openCategory
+cartOpen
+cart
+cartHydrated
+orderOpen
+orderType
+orderError
+orderForm
+
+SIDE EFFECTS
+------------
+getMenu()
+load cart from localStorage
+save cart to localStorage
+
+MAIN UI LOGIC
+-------------
+toggleMenu()
+toggleCategory()
+
+CART LOGIC
+----------
+createCartItemId()
+addToCart()
+updateCartQuantity()
+removeFromCart()
+clearAllCart()
+handlePlaceOrder()
+handleOrderChange()
+handleOrderTypeChange()
+closeOrder()
+handleWhatsappOrder()
+
+DERIVED CART DATA
+-----------------
+cartCount
+
+MENU SHORTCUT
+-------------
+goToCategory()
+
+JSX
+---
+Logo
+Morning Menu
+All Day Menu
+Menu popup
+Cart button
+Cart popup
+Floating menu
+Place Order popup
+
+CATEGORY COMPONENT
+------------------
+isOpen
+categoryImage
+category rendering
+ProductCard rendering
+
+PRODUCTCARD
+-----------
+selectedPreference
+availabilityOpen
+selectedVariation
+selectedAddons
+
+DATA NORMALIZATION
+------------------
+variations = product.product_variations || []
+addons = product.multiple_addons || []
+
+FEATURE FLAGS
+-------------
+hasPreference
+hasVariations
+hasAddons
+
+AVAILABILITY
+------------
+checkAvailability()
+availableDays
+formatDay()
+handleAddProduct()
+
+PRICING
+-------
+variationPrice
+addonsPrice
+finalPrice
+
+CART LOOKUP
+-----------
+cartItemId
+cartItem
+quantity
+
+EXTRAS
+------
+toggleAddon()
+
+ADD
+---
+addProduct()
+
+QUANTITY
+--------
+increaseQuantity()
+decreaseQuantity()
+
+DISPLAY
+-------
+product image
+product name
+icons
+badges
+special marker
+coming-soon
+description
+extras
+variations
+preferences
+price
+ADD / quantity controls
+availability popup
+
+======================================================================
+FINAL STUDY CHECKLIST
+======================================================================
+
+You should be able to explain these without looking at the code:
+
+[ ] Why Home owns cart state
+[ ] What props are being passed to ProductCard
+[ ] Why createCartItemId uses product + preference + variation + addons
+[ ] Why addons are sorted before joining
+[ ] Why find() is used before map()
+[ ] Why spread syntax is used in state updates
+[ ] Why filter() removes cart items
+[ ] Why reduce() calculates totals
+[ ] Why finalPrice is derived instead of stored
+[ ] What controlled input means
+[ ] How [name]: value works
+[ ] Why trim() is useful
+[ ] What /\D/g does
+[ ] What /^\d{6}$/ means
+[ ] Why delivery fields are conditional
+[ ] How pickup and delivery share one handler
+[ ] How cart is saved to localStorage
+[ ] Why JSON.stringify / JSON.parse are required
+[ ] Why cartHydrated exists
+[ ] What caused the hydration mismatch
+[ ] How Place Order switches UI state
+[ ] How a cart array becomes a WhatsApp message
+[ ] Why encodeURIComponent is required
+[ ] What window.open() does
+[ ] Why the current implementation is WhatsApp handoff rather than backend order API
+[ ] How to rebuild addToCart from scratch
+[ ] How to rebuild handleOrderChange from scratch
+[ ] How to rebuild total calculation from scratch
+
+======================================================================
+ONE-SENTENCE SUMMARY
+======================================================================
+
+The project takes API data, lets the user configure a product, stores each distinct
+configuration in shared React cart state, persists that cart in localStorage, collects
+pickup/delivery customer information through controlled form state, validates it,
+converts the cart and customer data into a formatted string, URL-encodes that string,
+and opens WhatsApp with the order message.
+
+======================================================================
+END OF STUDY GUIDE
+======================================================================
+
+
+SOURCE CODE LINE MAP (CURRENT Home.place-order.jsx)
+-----------------------------------------------
+Cart state                   line 22
+Cart persistence load        line 63
+Cart persistence save        line 84
+Menu API call                line 46
+createCartItemId             line 120
+addToCart                    line 134
+updateCartQuantity           line 175
+removeFromCart               line 192
+handlePlaceOrder             line 202
+handleOrderChange            line 208
+handleWhatsappOrder          line 232
+cartCount                    line 347
+Category component           line 881
+ProductCard component        line 943
+checkAvailability            line 973
+finalPrice                   line 1043
+toggleAddon                  line 1063
+increaseQuantity             line 1092
+decreaseQuantity             line 1098
+
+======================================================================
+SOURCE-BASED NOTES
+======================================================================
+
+The current source uses:
+    api.GetMenuItems()
+for menu loading.
+
+The source stores the cart in React state and persists it to localStorage with the key:
+    "atf_cart"
+
+The current source uses the WhatsApp placeholder:
+    PUT_RESTAURANT_WHATSAPP_NUMBER_HERE
+
+Before production use, this must be replaced by the intended restaurant WhatsApp
+number in the project code.
+
+The API sample confirms the project is receiving:
+- menu sections
+- category information
+- product information
+- product variations
+- availability
+- preference flags
+- minimum quantity
+- multiple add-ons
+
+Use the API response sample as the reference for the exact field names.
+
+======================================================================
+SOURCE FILES USED
+======================================================================
+
+1. Home.place-order.jsx
+   Current implementation containing the Cart and Place Order logic.
+
+2. Pasted text(3).txt
+   API response/debug sample showing the menu/product data structure.
+
+No unseen api.interceptor.js implementation was assumed in this study guide.
+
+======================================================================

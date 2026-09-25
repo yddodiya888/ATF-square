@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import api from "@/helper/api.interceptor";
 import "./Home.css";
+import { Fancybox } from "@fancyapps/ui";
 const CART_STORAGE_KEY = "atf_cart";
+
+const WHATSAPP_NUMBER = "916353269955";
 
 export default function Home() {
   const [menu, setMenu] = useState(null);
@@ -11,14 +14,33 @@ export default function Home() {
   const [shortcutOpen, setShortcutOpen] = useState(false);
   const [openCategory, setOpenCategory] = useState(null);
   const [cartOpen, setCartOpen] = useState(false);
+  const [toast, setToast] = useState("");
+
+  // Keep the first server render and first client render identical.
+  // Load localStorage only after the component has mounted.
   const [cart, setCart] = useState([]);
   const [cartHydrated, setCartHydrated] = useState(false);
+
+  // PLACE ORDER
+  const [orderOpen, setOrderOpen] = useState(false);
+  const [orderType, setOrderType] = useState("pickup");
+  const [orderError, setOrderError] = useState("");
+  const [orderForm, setOrderForm] = useState({
+    name: "",
+    mobile: "",
+    notes: "",
+    houseFlat: "",
+    landmark: "",
+    pincode: "",
+  });
 
   useEffect(() => {
     async function getMenu() {
       try {
         const data = await api.GetMenuItems();
+
         console.log("MENU RESPONSE:", data);
+
         if (data.success === 1) {
           setMenu(data.data);
         }
@@ -172,7 +194,168 @@ export default function Home() {
   };
 
   const handlePlaceOrder = () => {
-    console.log("PLACE ORDER:", cart);
+    if (cart.length === 0) {
+      return;
+    }
+
+    setOrderError("");
+    setCartOpen(false);
+    setOrderOpen(true);
+  };
+
+  const handleOrderChange = (event) => {
+    const { name, value } = event.target;
+
+    setOrderForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
+
+    if (orderError) {
+      setOrderError("");
+    }
+  };
+
+  const handleOrderTypeChange = (type) => {
+    setOrderType(type);
+    setOrderError("");
+  };
+
+  const closeOrder = () => {
+    setOrderOpen(false);
+    setOrderError("");
+    setCartOpen(true);
+  };
+
+  const handleWhatsappOrder = () => {
+    const requiredPickupFields = [
+      ["name", "Please enter your name."],
+      ["mobile", "Please enter your mobile number."],
+    ];
+
+    const requiredDeliveryFields = [
+      ["name", "Please enter your name."],
+      ["mobile", "Please enter your mobile number."],
+      ["houseFlat", "Please enter your house / flat number."],
+      ["landmark", "Please enter your landmark."],
+      ["pincode", "Please enter your pincode."],
+    ];
+
+    const requiredFields =
+      orderType === "pickup" ? requiredPickupFields : requiredDeliveryFields;
+
+    const missingField = requiredFields.find(
+      ([field]) => !orderForm[field].trim(),
+    );
+
+    if (missingField) {
+      setOrderError(missingField[1]);
+      return;
+    }
+
+    const cleanMobile = orderForm.mobile.replace(/\D/g, "");
+
+    if (cleanMobile.length < 10) {
+      setOrderError("Please enter a valid mobile number.");
+      return;
+    }
+    if (cleanMobile.length > 10) {
+      setOrderError("Please enter a valid mobile number.");
+      return;
+    }
+
+    if (orderType === "delivery" && !/^\d{6}$/.test(orderForm.pincode.trim())) {
+      setOrderError("Please enter a valid 6-digit pincode.");
+      return;
+    }
+
+    const itemsText = cart
+      .map((item, index) => {
+        const itemTotal = Number(item.price || 0) * item.quantity;
+
+        const details = [];
+
+        if (item.preference) {
+          details.push(`Preference: ${item.preference}`);
+        }
+
+        if (item.variation) {
+          details.push(item.variation.variation_name);
+        }
+
+        if (item.addons?.length > 0) {
+          details.push(
+            `Extras: ${item.addons
+              .map((addon) => addon.multiple_addon_name)
+              .join(", ")}`,
+          );
+        }
+
+        return `${index + 1}. ${item.product.product_name} x ${
+          item.quantity
+        } - ₹${itemTotal}${details.length > 0 ? `\n   ${details.join(" | ")}` : ""}`;
+      })
+      .join("\n");
+
+    const total = cart.reduce(
+      (sum, item) => sum + Number(item.price || 0) * item.quantity,
+      0,
+    );
+
+    const addressText =
+      orderType === "delivery"
+        ? [
+            `House / Flat No.: ${orderForm.houseFlat}`,
+            `Building Name: ${orderForm.buildingName}`,
+            `Landmark: ${orderForm.landmark}`,
+            `Pincode: ${orderForm.pincode}`,
+          ].join("\n")
+        : "";
+
+    const message = [
+      "*ATF SQUARE – ORDER REQUEST*",
+      "━━━━━━━━━━━━━━━━━━━━",
+
+      "*Customer Details*",
+      `Name: ${orderForm.name}`,
+      `Mobile: ${orderForm.mobile}`,
+      `Order Type: ${orderType === "pickup" ? "Pick-Up" : "Delivery"}`,
+
+      orderForm.notes.trim() ? ` *Restaurant Notes:*\n${orderForm.notes}` : "",
+
+      orderType === "delivery" ? "" : null,
+
+      orderType === "delivery" ? ` *Delivery Address:*\n${addressText}` : "",
+
+      "━━━━━━━━━━━━━━━━━━━━",
+
+      "*ORDER SUMMARY*",
+      itemsText,
+
+      "━━━━━━━━━━━━━━━━━━━━",
+
+      ` *TOTAL AMOUNT: ₹${total}*`,
+
+      "━━━━━━━━━━━━━━━━━━━━",
+
+      " Thank you for ordering from ATF Square!",
+      "Please confirm my order.",
+    ]
+
+      .filter((line) => line !== null && line !== "")
+      .join("\n");
+
+    const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
+      message,
+    )}`;
+
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+    // EMPTY CART
+    setCart([]);
+
+    // CLOSE ORDER POPUP
+    setOrderOpen(false);
+    
   };
 
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
@@ -185,13 +368,10 @@ export default function Home() {
     // Close shortcut menu
     setShortcutOpen(false);
 
-    // Open correct main menu
     setOpenMenu(menuName);
 
-    // Open selected category
     setOpenCategory(categoryId);
 
-    // Wait for React to render
     setTimeout(() => {
       const element = document.getElementById(`${menuName}-${categoryId}`);
 
@@ -206,18 +386,11 @@ export default function Home() {
 
   return (
     <div className="home">
-      {/* ========================= */}
-      {/* LOGO */}
-      {/* ========================= */}
-
       <div className="logo">
         <img src="/images/atf-logo.png" alt="ATF Square" />
       </div>
 
-      {/* ========================= */}
-      {/* MORNING MENU */}
-      {/* ========================= */}
-
+      {/* morning menu */}
       <div
         className={`menu-section ${openMenu === "morning" ? "menu-open" : ""}`}
       >
@@ -289,7 +462,10 @@ export default function Home() {
       {/* ========================= */}
 
       {shortcutOpen && (
-        <div className="menu-popup-overlay">
+        <div
+          className="menu-popup-overlay"
+          onClick={() => setShortcutOpen(false)}
+        >
           <div
             className={`menu-popup ${cart.length > 0 ? "cart-visible" : ""}`}
           >
@@ -518,8 +694,141 @@ export default function Home() {
                 type="button"
                 className="place-order-button"
                 onClick={handlePlaceOrder}
+                disabled={cart.length === 0}
               >
                 Place Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================= */}
+      {/* PLACE ORDER POPUP */}
+      {/* ========================= */}
+
+      {orderOpen && (
+        <div className="order-popup-overlay">
+          <div
+            className="order-popup"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="order-popup-header">
+              <h3>Place Order</h3>
+
+              <button
+                type="button"
+                className="order-popup-close"
+                onClick={closeOrder}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="order-type-options">
+              <label
+                className={`order-type-option ${
+                  orderType === "pickup" ? "active" : ""
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="orderType"
+                  checked={orderType === "pickup"}
+                  onChange={() => handleOrderTypeChange("pickup")}
+                />
+                <span>Pick-Up</span>
+              </label>
+
+              <label
+                className={`order-type-option ${
+                  orderType === "delivery" ? "active" : ""
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="orderType"
+                  checked={orderType === "delivery"}
+                  onChange={() => handleOrderTypeChange("delivery")}
+                />
+                <span>Delivery</span>
+              </label>
+            </div>
+
+            <div className="order-form">
+              <input
+                type="text"
+                name="name"
+                value={orderForm.name}
+                onChange={handleOrderChange}
+                placeholder="Enter your name"
+              />
+
+              <input
+                type="tel"
+                name="mobile"
+                value={orderForm.mobile}
+                onChange={handleOrderChange}
+                placeholder="Enter your mobile number"
+                inputMode="numeric"
+              />
+
+              <textarea
+                name="notes"
+                value={orderForm.notes}
+                onChange={handleOrderChange}
+                placeholder="Restaurant notes (optional)"
+                rows="3"
+              />
+
+              {orderType === "delivery" && (
+                <div className="delivery-fields">
+                  <input
+                    type="text"
+                    name="houseFlat"
+                    value={orderForm.houseFlat}
+                    onChange={handleOrderChange}
+                    placeholder="House/Flat No., Building Name, Tower, Floor, Society"
+                  />
+
+                  <input
+                    type="text"
+                    name="landmark"
+                    value={orderForm.landmark}
+                    onChange={handleOrderChange}
+                    placeholder="Landmark"
+                  />
+
+                  <input
+                    type="text"
+                    name="pincode"
+                    value={orderForm.pincode}
+                    onChange={handleOrderChange}
+                    placeholder="Pincode"
+                    inputMode="numeric"
+                    maxLength={6}
+                  />
+                </div>
+              )}
+
+              {orderError && <p className="order-error">{orderError}</p>}
+            </div>
+
+            <div className="order-actions">
+              <button
+                type="button"
+                className="order-cancel-button"
+                onClick={closeOrder}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="order-whatsapp-button"
+                onClick={handleWhatsappOrder}
+              >
+                Order on WhatsApp
               </button>
             </div>
           </div>
