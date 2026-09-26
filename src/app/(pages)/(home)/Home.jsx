@@ -4,16 +4,18 @@ import { useEffect, useState } from "react";
 import api from "@/helper/api.interceptor";
 import "./Home.css";
 const CART_STORAGE_KEY = "atf_cart";
-
 const WHATSAPP_NUMBER = "916353269955";
 
 export default function Home() {
+  const [orderHistory, setOrderHistory] = useState([]);
+  const [orderHistoryOpen, setOrderHistoryOpen] = useState(false);
+  const [orderHistoryHydrated, setOrderHistoryHydrated] = useState(false);
   const [menu, setMenu] = useState(null);
   const [openMenu, setOpenMenu] = useState(null);
   const [shortcutOpen, setShortcutOpen] = useState(false);
   const [openCategory, setOpenCategory] = useState(null);
   const [cartOpen, setCartOpen] = useState(false);
-  const [toast, setToast] = useState("");
+  const [search, setSearch] = useState("");
 
   // Keep the first server render and first client render identical.
   // Load localStorage only after the component has mounted.
@@ -80,10 +82,39 @@ export default function Home() {
     }
   }, [cart, cartHydrated]);
 
+  // LOAD ORDER HISTORY AFTER MOUNT
+  useEffect(() => {
+    try {
+      const savedOrders = localStorage.getItem("atf_order_history");
+
+      if (savedOrders) {
+        const parsedOrders = JSON.parse(savedOrders);
+
+        if (Array.isArray(parsedOrders)) {
+          setOrderHistory(parsedOrders);
+        }
+      }
+    } catch (error) {
+      console.error("ORDER HISTORY LOAD ERROR:", error);
+    } finally {
+      setOrderHistoryHydrated(true);
+    }
+  }, []);
+
+  // SAVE ORDER HISTORY ONLY AFTER IT HAS BEEN LOADED
+  useEffect(() => {
+    if (!orderHistoryHydrated) return;
+
+    try {
+      localStorage.setItem("atf_order_history", JSON.stringify(orderHistory));
+    } catch (error) {
+      console.error("ORDER HISTORY SAVE ERROR:", error);
+    }
+  }, [orderHistory, orderHistoryHydrated]);
+
   /* ========================= */
   /* MAIN MENU TOGGLE */
   /* ========================= */
-
   const toggleMenu = (menuName) => {
     if (openMenu === menuName) {
       setOpenMenu(null);
@@ -93,7 +124,6 @@ export default function Home() {
       setOpenCategory(null);
     }
   };
-
   /* ========================= */
   /* CATEGORY TOGGLE */
   /* ========================= */
@@ -347,6 +377,47 @@ export default function Home() {
     const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
       message,
     )}`;
+    const newOrder = {
+      orderId: `ATF-${Date.now()}`,
+
+      date: new Date().toISOString(),
+
+      orderType,
+
+      customer: {
+        name: orderForm.name,
+        mobile: orderForm.mobile,
+        notes: orderForm.notes,
+      },
+
+      address: orderType === "delivery" ? addressText : "",
+
+      items: cart.map((item) => ({
+        cartItemId: item.cartItemId,
+        productId: item.product.product_id,
+        productName: item.product.product_name,
+        quantity: item.quantity,
+        price: item.price,
+
+        preference: item.preference || "",
+
+        variation: item.variation ? item.variation.variation_name : "",
+
+        addons:
+          item.addons?.map((addon) => ({
+            id: addon.addon_id,
+            name: addon.multiple_addon_name,
+            price: addon.multiple_addon_price,
+          })) || [],
+      })),
+
+      total,
+
+      // status: "Placed",
+    };
+
+    // SAVE ORDER HISTORY
+    setOrderHistory((currentOrders) => [newOrder, ...currentOrders]);
 
     window.open(whatsappUrl, "_blank", "noopener,noreferrer");
     // EMPTY CART
@@ -354,7 +425,6 @@ export default function Home() {
 
     // CLOSE ORDER POPUP
     setOrderOpen(false);
-
   };
 
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
@@ -366,9 +436,7 @@ export default function Home() {
   const goToCategory = (menuName, categoryId) => {
     // Close shortcut menu
     setShortcutOpen(false);
-
     setOpenMenu(menuName);
-
     setOpenCategory(categoryId);
 
     setTimeout(() => {
@@ -383,15 +451,49 @@ export default function Home() {
     }, 100);
   };
 
+  const searchProducts = (products) => {
+    if (!search.trim()) return products;
+    const keyword = search.toLowerCase();
+
+    return products.filter(
+      (product) =>
+        product.product_name?.toLowerCase().includes(keyword) ||
+        product.description?.toLowerCase().includes(keyword),
+    );
+  };
+
   return (
     <div className="home">
       <div className="logo">
         <img src="/images/atf-logo.png" alt="ATF Square" />
       </div>
 
+      <button
+        type="button"
+        className="order-history-button"
+        onClick={() => setOrderHistoryOpen(true)}
+      >
+        Orders
+      </button>
+
+      <div className="search-box">
+        <input
+          type="text"
+          placeholder="Search food..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+
+        {search && (
+          <button type="button" onClick={() => setSearch("")}>
+            ×
+          </button>
+        )}
+      </div>
+
       {/* morning menu */}
       <div
-        className={`menu-section ${openMenu === "morning" ? "menu-open" : ""}`}
+        className={`menu-section ${openMenu === "morning" || search ? "menu-open" : ""}`}
       >
         <div
           className="menu-banner morning-banner"
@@ -402,21 +504,27 @@ export default function Home() {
           {!(openMenu === "morning") && <span>+</span>}
         </div>
 
-        {openMenu === "morning" && (
+        {(openMenu === "morning" || search) && (
           <div className="categories">
-            {menu?.morning_menu?.map((category) => (
-              <Category
-                key={category.category_id}
-                menuName="morning"
-                category={category}
-                openCategory={openCategory}
-                toggleCategory={toggleCategory}
-                cart={cart}
-                addToCart={addToCart}
-                updateCartQuantity={updateCartQuantity}
-                removeFromCart={removeFromCart}
-              />
-            ))}
+            {menu?.morning_menu
+              ?.map((category) => ({
+                ...category,
+                products: searchProducts(category.products || []),
+              }))
+              .filter((category) => category.products.length > 0)
+              .map((category) => (
+                <Category
+                  key={category.category_id}
+                  menuName="morning"
+                  category={category}
+                  openCategory={openCategory}
+                  toggleCategory={toggleCategory}
+                  cart={cart}
+                  addToCart={addToCart}
+                  updateCartQuantity={updateCartQuantity}
+                  removeFromCart={removeFromCart}
+                />
+              ))}
           </div>
         )}
       </div>
@@ -426,7 +534,7 @@ export default function Home() {
       {/* ========================= */}
 
       <div
-        className={`menu-section ${openMenu === "allDay" ? "menu-open" : ""}`}
+        className={`menu-section ${openMenu === "allDay" || search ? "menu-open" : ""}`}
       >
         <div
           className="menu-banner all-day-banner"
@@ -437,21 +545,27 @@ export default function Home() {
           {!(openMenu === "allDay") && <span>+</span>}
         </div>
 
-        {openMenu === "allDay" && (
+        {(openMenu === "allDay" || search) && (
           <div className="categories">
-            {menu?.all_day_menu?.map((category) => (
-              <Category
-                key={category.category_id}
-                menuName="allDay"
-                category={category}
-                openCategory={openCategory}
-                toggleCategory={toggleCategory}
-                cart={cart}
-                addToCart={addToCart}
-                updateCartQuantity={updateCartQuantity}
-                removeFromCart={removeFromCart}
-              />
-            ))}
+            {menu?.all_day_menu
+              ?.map((category) => ({
+                ...category,
+                products: searchProducts(category.products || []),
+              }))
+              .filter((category) => category.products.length > 0)
+              .map((category) => (
+                <Category
+                  key={category.category_id}
+                  menuName="allDay"
+                  category={category}
+                  openCategory={openCategory}
+                  toggleCategory={toggleCategory}
+                  cart={cart}
+                  addToCart={addToCart}
+                  updateCartQuantity={updateCartQuantity}
+                  removeFromCart={removeFromCart}
+                />
+              ))}
           </div>
         )}
       </div>
@@ -657,7 +771,7 @@ export default function Home() {
                         className="cart-clear"
                         onClick={() => removeFromCart(item.cartItemId)}
                       >
-                        Clear
+                        🗑️
                       </button>
                     </div>
                   </div>
@@ -830,6 +944,86 @@ export default function Home() {
                 Order on WhatsApp
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {orderHistoryOpen && (
+        <div className="order-history-overlay">
+          <div className="order-history-popup">
+            <div className="order-history-header">
+              <h2>Order History</h2>
+
+              <button type="button" onClick={() => setOrderHistoryOpen(false)}>
+                ×
+              </button>
+            </div>
+
+            {orderHistory.length === 0 ? (
+              <div className="empty-order-history">
+                <p>No orders yet.</p>
+              </div>
+            ) : (
+              <div className="order-history-list">
+                {orderHistory.map((order) => (
+                  <div className="order-history-card" key={order.orderId}>
+                    <div className="order-history-top">
+                      <div>
+                        <strong>{order.orderId}</strong>
+
+                        <p>{new Date(order.date).toLocaleString()}</p>
+                      </div>
+
+                      {/* <span className="order-status">{order.status}</span> */}
+                    </div>
+
+                    <div className="order-history-type">
+                      {order.orderType === "pickup" ? "Pick-Up" : "Delivery"}
+                    </div>
+
+                    <div className="order-history-items">
+                      {order.items.map((item) => (
+                        <div
+                          className="order-history-item"
+                          key={item.cartItemId}
+                        >
+                          <div>
+                            <strong>{item.productName}</strong>
+
+                            <p>Qty: {item.quantity}</p>
+
+                            {item.variation && (
+                              <p>Variation: {item.variation}</p>
+                            )}
+
+                            {item.preference && (
+                              <p>Preference: {item.preference}</p>
+                            )}
+
+                            {item.addons.length > 0 && (
+                              <p>
+                                Extras:{" "}
+                                {item.addons
+                                  .map((addon) => addon.name)
+                                  .join(", ")}
+                              </p>
+                            )}
+                          </div>
+
+                          <span>₹{item.price * item.quantity}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="order-history-total">
+                      <strong>Total</strong>
+
+                      <strong>₹{order.total}</strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

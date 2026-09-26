@@ -5,6 +5,29 @@
   box-sizing: border-box;
   font-family: Arial, Helvetica, sans-serif;
 }
+.search-box {
+  display: flex;
+  max-width: 500px;
+  margin: 20px auto;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.search-box input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  padding: 12px 14px;
+  font-size: 15px;
+}
+.search-box button {
+  border: 0;
+  background: transparent;
+  padding: 0 14px;
+  font-size: 20px;
+  cursor: pointer;
+}
 
 .logo {
   display: flex;
@@ -160,7 +183,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  justify-content:space-between;
+  justify-content: space-between;
   align-items: flex-start;
 }
 
@@ -909,12 +932,12 @@
 }
 
 .order-type-option.active {
-  border-color:black;
+  border-color: black;
 }
 
 .order-type-option input {
   margin: 0;
-  accent-color:black;
+  accent-color: black;
 }
 
 .order-form {
@@ -936,7 +959,7 @@
 
 .order-form input:focus,
 .order-form textarea:focus {
-  border-color:black;
+  border-color: black;
 }
 
 .order-form textarea {
@@ -946,8 +969,8 @@
 .delivery-fields {
   gap: 12px;
 }
-.delivery-fields{
-  display:flex;
+.delivery-fields {
+  display: flex;
   flex-direction: column;
   gap: 15px;
 }
@@ -983,7 +1006,7 @@
 }
 
 .order-whatsapp-button {
-  background:black;
+  background: black;
   color: #fff;
 }
 
@@ -1024,7 +1047,6 @@
 ========================= */
 
 @media (max-width: 600px) {
-
   .order-popup-overlay {
     padding: 10px;
     align-items: center;
@@ -1121,14 +1143,12 @@
     font-size: 14px;
     border-radius: 8px;
   }
-
 }
 /* =========================
    CART - MOBILE
 ========================= */
 
 @media (max-width: 600px) {
-
   .cart-popup-overlay {
     align-items: flex-end;
     justify-content: center;
@@ -1137,7 +1157,7 @@
 
   .cart-popup {
     position: relative;
-    right:50%;
+    right: 50%;
     bottom: auto;
 
     width: 100%;
@@ -1242,5 +1262,158 @@
     padding: 30px 10px;
     text-align: center;
     font-size: 14px;
+  }
+}
+/* order history */
+.order-history-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  z-index: 2000;
+  padding: 20px;
+}
+
+.order-history-popup {
+  width: 600px;
+  max-width: 100%;
+  max-height: 85vh;
+  position: fixed;
+  background: #fff;
+  border-radius: 16px;
+  bottom: 0%;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.order-history-button {
+  border: none;
+  width: 3.5rem;
+  height: 3.5rem;
+  background-color: #000;
+  color: white;
+  border-radius: 50px;
+  position: fixed;
+  left: 1%;
+  bottom: 6%;
+}
+
+.order-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin-bottom: 20px;
+}
+
+.order-history-header h2 {
+  margin: 0;
+}
+
+.order-history-header button {
+  border: none;
+  background: transparent;
+
+  font-size: 28px;
+  cursor: pointer;
+}
+
+.order-history-card {
+  border: 1px solid #ddd;
+  border-radius: 12px;
+
+  padding: 15px;
+  margin-bottom: 12px;
+}
+
+.order-history-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.order-history-top p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: #777;
+}
+
+.order-status {
+  background: #e8f5e9;
+  color: #2e7d32;
+
+  padding: 5px 10px;
+  border-radius: 20px;
+
+  font-size: 12px;
+  height: fit-content;
+}
+
+.order-history-type {
+  margin: 12px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.order-history-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+
+  padding: 10px 0;
+  border-top: 1px solid #eee;
+}
+
+.order-history-item p {
+  margin: 4px 0;
+  font-size: 12px;
+  color: #777;
+}
+
+.order-history-total {
+  display: flex;
+  justify-content: space-between;
+
+  border-top: 1px solid #ddd;
+
+  padding-top: 12px;
+  margin-top: 8px;
+}
+
+.empty-order-history {
+  text-align: center;
+  padding: 50px 20px;
+  color: #777;
+}
+@media (max-width: 600px) {
+  .order-history-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .order-history-popup {
+    width: 100%;
+    max-width: 100%;
+    max-height: 90vh;
+    position: fixed;
+    border-radius: 18px 18px 0 0;
+    bottom: 0%;
+    padding: 18px 14px;
+  }
+
+  .order-history-card {
+    padding: 12px;
+  }
+
+  .order-history-item {
+    font-size: 13px;
+  }
+
+  .order-history-total {
+    font-size: 15px;
   }
 }

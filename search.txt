@@ -1,0 +1,520 @@
+ATF SQUARE - SEARCH FUNCTION EXPLANATION
+===========================================
+
+WHAT WE ADDED
+-------------
+A simple product search was added to Home.jsx.
+
+The search:
+- Searches product names.
+- Searches product descriptions.
+- Searches Morning Menu.
+- Searches All Day Menu.
+- Hides categories that have no matching products.
+- Shows the menu sections while searching.
+- Has a simple X button to clear the search.
+
+
+1. SEARCH STATE
+---------------
+
+Inside Home():
+
+const [search, setSearch] = useState("");
+
+This stores whatever the user types.
+
+Example:
+
+search = "toast"
+
+
+2. SEARCH INPUT
+---------------
+
+The input is:
+
+<div className="search-box">
+  <input
+    type="text"
+    placeholder="Search food..."
+    value={search}
+    onChange={(e) => setSearch(e.target.value)}
+  />
+
+  {search && (
+    <button type="button" onClick={() => setSearch("")}>
+      ×
+    </button>
+  )}
+</div>
+
+
+The important part is:
+
+value={search}
+
+The input displays the current search state.
+
+onChange:
+
+onChange={(e) => setSearch(e.target.value)}
+
+When the user types:
+
+t
+
+React changes:
+
+search = "t"
+
+Then:
+
+to
+
+search = "to"
+
+Then:
+
+toast
+
+search = "toast"
+
+
+3. SEARCH FUNCTION
+------------------
+
+The main search function is:
+
+const searchProducts = (products) => {
+  if (!search.trim()) return products;
+
+  const keyword = search.toLowerCase();
+
+  return products.filter((product) =>
+    product.product_name?.toLowerCase().includes(keyword) ||
+    product.description?.toLowerCase().includes(keyword)
+  );
+};
+
+
+4. WHY trim()?
+--------------
+
+This checks whether the user only entered spaces.
+
+Example:
+
+search = "   "
+
+search.trim()
+
+becomes:
+
+""
+
+So the function returns all products.
+
+
+5. WHY toLowerCase()?
+---------------------
+
+It makes the search case-insensitive.
+
+Without it:
+
+Toast
+
+and
+
+toast
+
+could behave differently.
+
+With:
+
+toLowerCase()
+
+both become:
+
+toast
+
+
+6. filter()
+----------
+
+filter() creates a new array containing only matching products.
+
+Example:
+
+products = [
+  {
+    product_name: "Cheese Toast"
+  },
+  {
+    product_name: "Pizza"
+  },
+  {
+    product_name: "Butter Toast"
+  }
+]
+
+Search:
+
+toast
+
+Result:
+
+[
+  {
+    product_name: "Cheese Toast"
+  },
+  {
+    product_name: "Butter Toast"
+  }
+]
+
+
+7. includes()
+-------------
+
+includes() checks whether text contains another text.
+
+Example:
+
+"Cheese Toast".toLowerCase().includes("toast")
+
+Result:
+
+true
+
+But:
+
+"Pizza".toLowerCase().includes("toast")
+
+Result:
+
+false
+
+
+8. SEARCHING DESCRIPTION TOO
+----------------------------
+
+The function checks:
+
+product.product_name
+
+OR
+
+product.description
+
+This part:
+
+product.product_name?.toLowerCase().includes(keyword) ||
+product.description?.toLowerCase().includes(keyword)
+
+means a product matches if the keyword exists in either field.
+
+
+9. WHY THE ? IS USED
+--------------------
+
+Example:
+
+product.description?.toLowerCase()
+
+The ? is optional chaining.
+
+Some products might not have a description.
+
+Instead of causing an error, JavaScript safely returns undefined.
+
+So the search still works.
+
+
+10. SEARCHING MORNING MENU
+--------------------------
+
+The Morning Menu now does:
+
+menu?.morning_menu
+  ?.map((category) => ({
+    ...category,
+    products: searchProducts(category.products || [])
+  }))
+  .filter((category) => category.products.length > 0)
+  .map((category) => (
+    <Category ... />
+  ))
+
+
+The process is:
+
+Original categories
+        ↓
+Search products
+        ↓
+Remove empty categories
+        ↓
+Display remaining categories
+
+
+11. WHY map() IS USED FIRST
+---------------------------
+
+Each category contains its own products.
+
+Example:
+
+Breakfast
+  - Toast
+  - Eggs
+  - Sandwich
+
+Drinks
+  - Coffee
+  - Juice
+
+
+We create a new category object:
+
+{
+  ...category,
+  products: searchProducts(category.products || [])
+}
+
+
+The ...category keeps all the existing category information.
+
+Only products is replaced with the filtered products.
+
+
+12. WHY filter() IS USED
+------------------------
+
+Suppose the user searches:
+
+toast
+
+And the result is:
+
+Breakfast
+  - Cheese Toast
+
+Drinks
+  - no matching products
+
+The Drinks category would have:
+
+products = []
+
+This code:
+
+.filter((category) => category.products.length > 0)
+
+removes Drinks.
+
+So only categories containing matching products are displayed.
+
+
+13. ALL DAY MENU
+----------------
+
+The exact same search process is used for All Day Menu.
+
+This keeps the search simple and consistent.
+
+Both menus use:
+
+searchProducts(category.products || [])
+
+
+14. SEARCH AUTOMATICALLY OPENS MENU SECTIONS
+--------------------------------------------
+
+Normally Morning Menu only displays categories when:
+
+openMenu === "morning"
+
+But during search we also allow:
+
+search
+
+So the condition becomes:
+
+openMenu === "morning" || search
+
+This means:
+
+No search:
+Normal menu behavior.
+
+Search active:
+Matching products can be displayed automatically.
+
+
+15. CLEAR SEARCH
+----------------
+
+The X button uses:
+
+setSearch("")
+
+This changes:
+
+search = "toast"
+
+to:
+
+search = ""
+
+Then:
+
+searchProducts()
+
+sees that the search is empty and returns all products.
+
+So the normal menu comes back.
+
+
+16. COMPLETE FLOW
+-----------------
+
+User types:
+
+"pizza"
+
+        ↓
+
+onChange runs
+
+        ↓
+
+setSearch("pizza")
+
+        ↓
+
+Home() renders again
+
+        ↓
+
+searchProducts() runs
+
+        ↓
+
+product names/descriptions are checked
+
+        ↓
+
+filter() keeps matching products
+
+        ↓
+
+empty categories are removed
+
+        ↓
+
+matching products are displayed
+
+
+17. REACT CONCEPTS USED
+-----------------------
+
+This search feature teaches:
+
+1. useState
+   Stores search text.
+
+2. onChange
+   Detects typing.
+
+3. filter()
+   Finds matching products.
+
+4. map()
+   Creates updated category data and renders categories.
+
+5. includes()
+   Checks whether text contains the search keyword.
+
+6. toLowerCase()
+   Makes searching case-insensitive.
+
+7. trim()
+   Handles empty/space-only searches.
+
+8. Optional chaining (?.)
+   Safely reads optional API fields.
+
+9. Conditional rendering
+   Shows the clear button only when search has text.
+
+
+18. SIMPLE WAY TO REMEMBER
+--------------------------
+
+Search is basically:
+
+INPUT
+  ↓
+STATE
+  ↓
+FILTER
+  ↓
+DISPLAY
+
+
+In this project:
+
+input
+  ↓
+search state
+  ↓
+searchProducts()
+  ↓
+filter()
+  ↓
+Category
+  ↓
+ProductCard
+
+
+19. IMPORTANT
+-------------
+
+The search does NOT make another API request.
+
+The API is still called once to get the menu.
+
+Then JavaScript filters the already-loaded products in the browser.
+
+So:
+
+API
+ ↓
+All menu products
+ ↓
+Search locally
+ ↓
+Display matching products
+
+
+20. CURRENT SEARCH LIMIT
+------------------------
+
+The current search checks:
+
+- product_name
+- description
+
+It does not currently search:
+
+- category name
+- variation name
+- addon name
+- product ID
+
+Those can be added later if needed.
+
+
+END
