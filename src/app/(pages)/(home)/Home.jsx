@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import api from "@/helper/api.interceptor";
 import "./Home.css";
-import { Fancybox } from "@fancyapps/ui";
 const CART_STORAGE_KEY = "atf_cart";
 
 const WHATSAPP_NUMBER = "916353269955";
@@ -355,7 +354,7 @@ export default function Home() {
 
     // CLOSE ORDER POPUP
     setOrderOpen(false);
-    
+
   };
 
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
