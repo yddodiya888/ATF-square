@@ -450,6 +450,7 @@ export default function Home() {
       }
     }, 100);
   };
+  // i would like to 
 
   const searchProducts = (products) => {
     if (!search.trim()) return products;
@@ -473,7 +474,7 @@ export default function Home() {
         className="order-history-button"
         onClick={() => setOrderHistoryOpen(true)}
       >
-        Orders
+        Past Orders
       </button>
 
       <div className="search-box">
